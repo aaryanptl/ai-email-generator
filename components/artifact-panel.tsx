@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Code2, Copy, Check, Download } from "lucide-react";
+import { Eye, Code2, Copy, Check, Download, AlertTriangle } from "lucide-react";
 import { EmailPreview } from "./email-preview";
 import { CodeViewer } from "./code-viewer";
 
@@ -14,9 +14,10 @@ export interface EmailArtifact {
 
 interface ArtifactPanelProps {
   email: EmailArtifact | null;
+  compilationError?: string | null;
 }
 
-export function ArtifactPanel({ email }: ArtifactPanelProps) {
+export function ArtifactPanel({ email, compilationError }: ArtifactPanelProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
   const [copiedHtml, setCopiedHtml] = useState(false);
 
@@ -103,15 +104,28 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
           justifyContent: "space-between",
           padding: "12px 16px",
           borderBottom: "1px solid #1f2937",
+          flexWrap: "wrap",
+          gap: "8px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            minWidth: 0,
+            flex: "1 1 auto",
+          }}
+        >
           <h3
             style={{
               fontSize: "14px",
               fontWeight: 600,
               color: "#f9fafb",
               margin: 0,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
             {email.name}
@@ -123,12 +137,16 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
               padding: "2px 8px",
               backgroundColor: "#1f2937",
               borderRadius: "4px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: "200px",
             }}
           >
             {email.description}
           </span>
         </div>
-        <div style={{ display: "flex", gap: "4px" }}>
+        <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
           {/* Tabs */}
           <button
             onClick={() => setActiveTab("preview")}
@@ -176,6 +194,7 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
           />
           <button
             onClick={handleCopyHtml}
+            disabled={!email.htmlCode}
             style={{
               display: "flex",
               alignItems: "center",
@@ -184,8 +203,8 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
               borderRadius: "6px",
               border: "1px solid #374151",
               backgroundColor: "transparent",
-              color: "#d1d5db",
-              cursor: "pointer",
+              color: !email.htmlCode ? "#4b5563" : "#d1d5db",
+              cursor: !email.htmlCode ? "not-allowed" : "pointer",
               fontSize: "13px",
             }}
           >
@@ -194,6 +213,7 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
           </button>
           <button
             onClick={handleDownloadHtml}
+            disabled={!email.htmlCode}
             style={{
               display: "flex",
               alignItems: "center",
@@ -202,8 +222,8 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
               borderRadius: "6px",
               border: "1px solid #374151",
               backgroundColor: "transparent",
-              color: "#d1d5db",
-              cursor: "pointer",
+              color: !email.htmlCode ? "#4b5563" : "#d1d5db",
+              cursor: !email.htmlCode ? "not-allowed" : "pointer",
               fontSize: "13px",
             }}
           >
@@ -212,10 +232,55 @@ export function ArtifactPanel({ email }: ArtifactPanelProps) {
         </div>
       </div>
 
+      {/* Compilation error banner */}
+      {compilationError && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "10px",
+            padding: "12px 16px",
+            backgroundColor: "#451a03",
+            borderBottom: "1px solid #92400e",
+            color: "#fbbf24",
+            fontSize: "13px",
+            lineHeight: "1.5",
+          }}
+        >
+          <AlertTriangle
+            size={16}
+            style={{ flexShrink: 0, marginTop: "2px" }}
+          />
+          <div>
+            <strong>Compilation Error:</strong> {compilationError}
+            <div style={{ color: "#d97706", marginTop: "4px", fontSize: "12px" }}>
+              The generated code had an error. Try asking the AI to fix it or
+              regenerate the template.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div style={{ flex: 1, overflow: "hidden" }}>
         {activeTab === "preview" ? (
-          <EmailPreview htmlCode={email.htmlCode} />
+          email.htmlCode ? (
+            <EmailPreview htmlCode={email.htmlCode} />
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                color: "#6b7280",
+                fontSize: "14px",
+              }}
+            >
+              No preview available — check the Code tab for the generated
+              source.
+            </div>
+          )
         ) : (
           <CodeViewer code={email.tsxCode} />
         )}
