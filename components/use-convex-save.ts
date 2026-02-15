@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
+import { useMutation } from "convex/react";
+import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
 
 interface SaveEmailData {
   name: string;
@@ -11,57 +14,33 @@ interface SaveEmailData {
 
 /**
  * Hook for saving/deleting emails via Convex.
- * Falls back to no-op if Convex is not configured.
  */
 export function useConvexSave() {
-  // Track Convex IDs mapped to local IDs for deletion
-  const convexIdMapRef = useRef<Map<string, string>>(new Map());
-  const convexAvailable = !!process.env.NEXT_PUBLIC_CONVEX_URL;
+  const createEmail = useMutation(api.emails.create);
+  const removeEmail = useMutation(api.emails.remove);
 
-  const saveEmail = useCallback(
-    async (email: SaveEmailData) => {
-      if (!convexAvailable) return;
-      try {
-        // Dynamic import to avoid errors when Convex is not set up
-        const { ConvexHttpClient } = await import("convex/browser");
-        const { api } = await import("@/convex/_generated/api");
-        const client = new ConvexHttpClient(
-          process.env.NEXT_PUBLIC_CONVEX_URL!
-        );
-        await client.mutation(api.emails.create, {
-          name: email.name,
-          description: email.description,
-          tsxCode: email.tsxCode,
-          htmlCode: email.htmlCode,
-        });
-      } catch {
-        // Silently fail - local state still works
-      }
-    },
-    [convexAvailable]
-  );
+  const saveEmail = useCallback(async (email: SaveEmailData) => {
+    try {
+      await createEmail({
+        name: email.name,
+        description: email.description,
+        tsxCode: email.tsxCode,
+        htmlCode: email.htmlCode,
+      });
+    } catch {
+      // no-op
+    }
+  }, [createEmail]);
 
-  const deleteEmail = useCallback(
-    async (localId: string) => {
-      if (!convexAvailable) return;
-      const convexId = convexIdMapRef.current.get(localId);
-      if (!convexId) return;
-      try {
-        const { ConvexHttpClient } = await import("convex/browser");
-        const { api } = await import("@/convex/_generated/api");
-        const client = new ConvexHttpClient(
-          process.env.NEXT_PUBLIC_CONVEX_URL!
-        );
-        await client.mutation(api.emails.remove, {
-          id: convexId as never,
-        });
-        convexIdMapRef.current.delete(localId);
-      } catch {
-        // Silently fail
-      }
-    },
-    [convexAvailable]
-  );
+  const deleteEmail = useCallback(async (id: string) => {
+    try {
+      await removeEmail({
+        id: id as Id<"emails">,
+      });
+    } catch {
+      // no-op
+    }
+  }, [removeEmail]);
 
   return { saveEmail, deleteEmail };
 }

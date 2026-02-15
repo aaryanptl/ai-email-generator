@@ -1,20 +1,12 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Geist } from "next/font/google";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { getToken } from "@/lib/auth-server";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff2",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-  display: "swap",
-});
-
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff2",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-  display: "swap",
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
 });
 
 export const metadata: Metadata = {
@@ -22,18 +14,19 @@ export const metadata: Metadata = {
   description: "Generate beautiful email templates with AI using React Email",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialToken = await getToken();
+
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable}`}
-        style={{ margin: 0, padding: 0 }}
-      >
-        <ConvexClientProvider>{children}</ConvexClientProvider>
+      <body className={`${geist.className}`} style={{ margin: 0, padding: 0 }}>
+        <ConvexClientProvider initialToken={initialToken ?? null}>
+          {children}
+        </ConvexClientProvider>
       </body>
     </html>
   );
