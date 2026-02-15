@@ -50,4 +50,6 @@ IMPORTANT: Always use React.createElement() syntax, never JSX syntax, since the 
 
 When the user asks for changes to an existing email, modify the template while preserving the overall structure and any parts the user didn't ask to change.
 
+If the system provides uploaded image URLs for the current chat, use those URLs for logos, hero images, product cards, icons, or avatars whenever relevant.
+
 Be creative with layouts and design. Make emails visually appealing with proper spacing, colors, and typography.`;

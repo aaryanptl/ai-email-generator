@@ -116,6 +116,18 @@ export const remove = mutation({
       await ctx.db.delete(email._id);
     }
 
+    const uploadedImages = await ctx.db
+      .query("uploadedImages")
+      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+      .collect();
+    for (const uploadedImage of uploadedImages) {
+      if (uploadedImage.ownerUserId !== ownerUserId) {
+        continue;
+      }
+      await ctx.storage.delete(uploadedImage.storageId);
+      await ctx.db.delete(uploadedImage._id);
+    }
+
     await ctx.db.delete(chat._id);
   },
 });

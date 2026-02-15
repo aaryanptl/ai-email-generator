@@ -3,7 +3,7 @@ import { z } from "zod";
 import { openrouter } from "@/lib/openrouter";
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
 import { compileEmail } from "@/lib/compile-email";
-import { fetchAuthMutation } from "@/lib/auth-server";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
 export const maxDuration = 60;
@@ -14,6 +14,22 @@ export async function POST(req: Request) {
   if (typeof id !== "string" || !Array.isArray(messages)) {
     return Response.json({ error: "Invalid request payload" }, { status: 400 });
   }
+
+  const uploadedImages = await fetchAuthQuery(api.images.listByChatId, {
+    chatId: id,
+  });
+
+  const imageContext = uploadedImages
+    .filter((image: { url: string | null }) => typeof image.url === "string")
+    .map(
+      (image: { fileName: string; url: string | null }) =>
+        `- ${image.fileName}: ${image.url as string}`,
+    )
+    .join("\n");
+
+  const systemPrompt = imageContext
+    ? `${EMAIL_SYSTEM_PROMPT}\n\nUploaded images for this chat:\n${imageContext}\n\nIf the user asks for logos, illustrations, product images, avatars, hero images, icons, or card art, prefer these uploaded image URLs over placeholders.`
+    : EMAIL_SYSTEM_PROMPT;
 
   const tools = {
     generate_email: tool({
@@ -61,8 +77,8 @@ export async function POST(req: Request) {
   };
 
   const result = streamText({
-    model: openrouter("z-ai/glm-5"),
-    system: EMAIL_SYSTEM_PROMPT,
+    model: openrouter("moonshotai/kimi-k2.5"),
+    system: systemPrompt,
     messages: await convertToModelMessages(messages, { tools }),
     tools,
     stopWhen: stepCountIs(3),
@@ -70,6 +86,7 @@ export async function POST(req: Request) {
 
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
+    sendReasoning: true,
     onFinish: async ({ messages: responseMessages }) => {
       const saved = await fetchAuthMutation(api.messages.saveChatMessages, {
         chatId: id,

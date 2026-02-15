@@ -42,9 +42,14 @@ function isToolPart(part: Record<string, unknown>): boolean {
   return typeof type === "string" && type.startsWith("tool-");
 }
 
+function isFilePart(part: Record<string, unknown>): boolean {
+  return part.type === "file";
+}
+
 export function MessageBubble({ role, content, parts }: MessageBubbleProps) {
   const isUser = role === "user";
   const toolParts = (parts ?? []).filter(isToolPart);
+  const fileParts = (parts ?? []).filter(isFilePart);
 
   return (
     <div className={cn("flex gap-3 px-4 py-3", isUser && "flex-row-reverse")}>
@@ -65,6 +70,32 @@ export function MessageBubble({ role, content, parts }: MessageBubbleProps) {
         )}
       >
         {content}
+        {fileParts.length > 0 ? (
+          <div className={cn("grid gap-2", content && "mt-3")}>
+            {fileParts.map((part, index) => {
+              const url = typeof part.url === "string" ? part.url : null;
+              const filename = typeof part.filename === "string" ? part.filename : `attachment-${index + 1}`;
+              const mediaType = typeof part.mediaType === "string" ? part.mediaType : "application/octet-stream";
+
+              return (
+                <div key={`${filename}-${index}`} className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                  {url && mediaType.startsWith("image/") ? (
+                    <img src={url} alt={filename} className="mb-2 max-h-52 w-full rounded-lg object-cover" />
+                  ) : null}
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate font-medium">{filename}</span>
+                    {url ? (
+                      <a href={url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                        Open
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">{mediaType}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         {!isUser && toolParts.length > 0 ? (
           <div className={cn("grid gap-2", content && "mt-3")}>
             {toolParts.map((part, index) => {

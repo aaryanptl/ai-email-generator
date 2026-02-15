@@ -13,6 +13,7 @@ import type * as betterAuth_auth from "../betterAuth/auth.js";
 import type * as chats from "../chats.js";
 import type * as emails from "../emails.js";
 import type * as http from "../http.js";
+import type * as images from "../images.js";
 import type * as messages from "../messages.js";
 import type * as users from "../users.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   chats: typeof chats;
   emails: typeof emails;
   http: typeof http;
+  images: typeof images;
   messages: typeof messages;
   users: typeof users;
 }>;

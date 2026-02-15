@@ -50,4 +50,18 @@ export default defineSchema({
     .index("by_owner", ["ownerUserId"])
     .index("by_chat", ["chatId"])
     .index("by_assistant_message", ["assistantMessageId"]),
+
+  uploadedImages: defineTable({
+    chatId: v.string(),
+    ownerUserId: v.id("users"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    contentType: v.string(),
+    sizeBytes: v.number(),
+    uploadedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_chat", ["chatId"])
+    .index("by_owner_chat_uploadedAt", ["ownerUserId", "chatId", "uploadedAt"]),
 });

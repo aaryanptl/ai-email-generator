@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import type { UIMessage } from "ai";
-import { LogOut } from "lucide-react";
 import { ChatPanel, EmailData } from "@/components/chat-panel";
 import { ArtifactPanel, EmailArtifact } from "@/components/artifact-panel";
 import { HistorySidebar, type HistoryChat } from "@/components/history-sidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -29,10 +29,12 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
 
   const [chatId, setChatId] = useState(bootChatId);
   const [hasPersistedPath, setHasPersistedPath] = useState(Boolean(initialChatId));
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [historyDockedOpen, setHistoryDockedOpen] = useState(true);
   const [previewEmail, setPreviewEmail] = useState<EmailArtifact | null>(null);
   const [compilationError, setCompilationError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"chat" | "preview">("chat");
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const upsertUser = useMutation(api.users.upsertFromSession);
   const deleteChat = useMutation(api.chats.remove);
@@ -100,7 +102,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
     setPreviewEmail(null);
     setCompilationError(null);
     setActivePanel("chat");
-    setSidebarOpen(false);
+    setMobileHistoryOpen(false);
     router.replace("/chat");
   }, [router]);
 
@@ -138,7 +140,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
   }, []);
 
   const handleSelectChat = useCallback((selectedChatId: string) => {
-    setSidebarOpen(false);
+    setMobileHistoryOpen(false);
     router.push(`/chat/${selectedChatId}`);
   }, [router]);
 
@@ -151,7 +153,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
   }, [chatId, deleteChat, router]);
 
   const handleNewChat = useCallback(() => {
-    setSidebarOpen(false);
+    setMobileHistoryOpen(false);
     setPreviewEmail(null);
     setCompilationError(null);
     setActivePanel("chat");
@@ -159,6 +161,26 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
     setChatId(nextChatId);
     setHasPersistedPath(false);
     window.history.replaceState({}, "", "/chat");
+  }, []);
+
+  const handleToggleHistory = useCallback(() => {
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop) {
+      setHistoryDockedOpen((value) => !value);
+      return;
+    }
+    setMobileHistoryOpen((value) => !value);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const update = () => {
+      setIsDesktop(mediaQuery.matches);
+    };
+
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
   }, []);
 
   if (sessionPending) {
@@ -196,66 +218,118 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
-      <div className="fixed right-3 top-3 z-50 hidden items-center gap-2 rounded-4xl border border-border/70 bg-card/95 px-2 py-1.5 shadow-sm backdrop-blur md:flex">
-        <p className="max-w-44 truncate px-2 text-xs text-muted-foreground">
-          {session.user.email ?? "Signed in"}
-        </p>
-        <Button onClick={handleSignOut} size="sm" variant="secondary">
-          <LogOut data-icon="inline-start" />
-          Sign out
-        </Button>
-      </div>
-
       <HistorySidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        open={mobileHistoryOpen}
+        onClose={() => setMobileHistoryOpen(false)}
         chats={historyChats}
         activeChatId={hasPersistedPath ? chatId : undefined}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
+        userEmail={session.user.email ?? "Signed in"}
+        userName={session.user.name ?? undefined}
+        userImage={session.user.image ?? null}
+        onSignOut={() => void handleSignOut()}
       />
 
-      <div className="fixed inset-x-3 bottom-3 z-30 flex rounded-4xl border border-border/70 bg-card/95 p-1 shadow-sm backdrop-blur md:hidden">
-        <Button
-          onClick={() => setActivePanel("chat")}
-          variant={activePanel === "chat" ? "secondary" : "ghost"}
-          className="flex-1"
-        >
-          Chat
-        </Button>
-        <Button
-          onClick={() => setActivePanel("preview")}
-          variant={activePanel === "preview" ? "secondary" : "ghost"}
-          className="flex-1"
-        >
-          Preview
-        </Button>
-      </div>
+      {isDesktop ? (
+        <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+          {historyDockedOpen ? (
+            <>
+              <ResizablePanel defaultSize="22%" minSize={240} maxSize={420} className="min-w-[240px]">
+                <HistorySidebar
+                  variant="docked"
+                  chats={historyChats}
+                  activeChatId={hasPersistedPath ? chatId : undefined}
+                  onSelectChat={handleSelectChat}
+                  onDeleteChat={handleDeleteChat}
+                  userEmail={session.user.email ?? "Signed in"}
+                  userName={session.user.name ?? undefined}
+                  userImage={session.user.image ?? null}
+                  onSignOut={() => void handleSignOut()}
+                />
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          ) : null}
 
-      <div
-        className={cn(
-          "h-full w-full shrink-0 border-r border-border/60 md:min-w-[360px] md:max-w-[460px] md:w-[38vw]",
-          activePanel !== "chat" && "hidden md:block",
-        )}
-        data-active={activePanel === "chat"}
-      >
-        <ChatPanel
-          key={chatId}
-          chatId={chatId}
-          initialMessages={chatInitialMessages}
-          onEmailGenerated={handleEmailGenerated}
-          onEnsureChatPath={handleEnsureChatPath}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          onNewChat={handleNewChat}
-        />
-      </div>
+          <ResizablePanel
+            defaultSize={historyDockedOpen ? "31%" : "38%"}
+            minSize={320}
+            maxSize="48%"
+            className="min-w-[320px]"
+          >
+            <ChatPanel
+              key={chatId}
+              chatId={chatId}
+              initialMessages={chatInitialMessages}
+              onEmailGenerated={handleEmailGenerated}
+              onEnsureChatPath={handleEnsureChatPath}
+              onToggleSidebar={handleToggleHistory}
+              onNewChat={handleNewChat}
+            />
+          </ResizablePanel>
 
-      <div
-        className={cn("min-w-0 flex-1", activePanel !== "preview" && "hidden md:block")}
-        data-active={activePanel === "preview"}
-      >
-        <ArtifactPanel email={currentEmail} compilationError={compilationError} />
-      </div>
+          <ResizableHandle withHandle />
+
+          <ResizablePanel defaultSize={historyDockedOpen ? "47%" : "62%"} minSize={360} className="min-w-[360px]">
+            <ArtifactPanel
+              chatId={chatId}
+              email={currentEmail}
+              compilationError={compilationError}
+              onEnsureChatPath={handleEnsureChatPath}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <>
+          <div className="fixed inset-x-3 top-3 z-30 flex rounded-4xl border border-border/70 bg-card/95 p-1 shadow-sm backdrop-blur">
+            <Button
+              onClick={() => setActivePanel("chat")}
+              variant={activePanel === "chat" ? "secondary" : "ghost"}
+              className="flex-1"
+            >
+              Chat
+            </Button>
+            <Button
+              onClick={() => setActivePanel("preview")}
+              variant={activePanel === "preview" ? "secondary" : "ghost"}
+              className="flex-1"
+            >
+              Preview
+            </Button>
+          </div>
+
+          <div
+            className={cn(
+              "h-full w-full shrink-0 border-r border-border/60 pt-16",
+              activePanel !== "chat" && "hidden",
+            )}
+            data-active={activePanel === "chat"}
+          >
+            <ChatPanel
+              key={chatId}
+              chatId={chatId}
+              initialMessages={chatInitialMessages}
+              onEmailGenerated={handleEmailGenerated}
+              onEnsureChatPath={handleEnsureChatPath}
+              onToggleSidebar={handleToggleHistory}
+              onNewChat={handleNewChat}
+            />
+          </div>
+
+          <div
+            className={cn("min-w-0 flex-1 pt-16", activePanel !== "preview" && "hidden")}
+            data-active={activePanel === "preview"}
+          >
+            <ArtifactPanel
+              chatId={chatId}
+              email={currentEmail}
+              compilationError={compilationError}
+              onEnsureChatPath={handleEnsureChatPath}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
