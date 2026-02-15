@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { DefaultChatTransport, type ChatStatus, type FileUIPart, type UIMessage } from "ai";
 import { MessageSquare, PanelLeftOpen, Plus, PlusIcon, Palette, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   Attachment,
   AttachmentPreview,
@@ -39,7 +40,7 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -85,6 +86,57 @@ interface ChatPanelProps {
 interface TemplateOption {
   _id: string;
   name: string;
+}
+
+interface DailyPromptStatus {
+  limit: number;
+  used: number;
+  remaining: number;
+  reached: boolean;
+  dayKey: string;
+}
+
+function PromptUsageRing({ used, limit }: { used: number; limit: number }) {
+  const remaining = Math.max(limit - used, 0);
+  const ratio = Math.min(used / limit, 1);
+  const radius = 9;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - ratio);
+  const isExhausted = remaining === 0;
+
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      title={`${remaining}/${limit} prompts left today (resets at 00:00 UTC)`}
+    >
+      <svg width="22" height="22" viewBox="0 0 22 22" className="-rotate-90">
+        <circle
+          cx="11"
+          cy="11"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          className="text-border"
+          strokeWidth="2.5"
+        />
+        <circle
+          cx="11"
+          cy="11"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          className={isExhausted ? "text-destructive" : "text-foreground"}
+          strokeWidth="2.5"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className={`text-xs tabular-nums ${isExhausted ? "text-destructive" : "text-muted-foreground"}`}>
+        {remaining}/{limit}
+      </span>
+    </div>
+  );
 }
 
 function useDisplayMessages(messages: UIMessage[]) {
@@ -134,12 +186,14 @@ function PromptInputAttachmentsInline() {
 function PromptSubmitButton({
   input,
   status,
+  blocked,
 }: {
   input: string;
   status: ChatStatus;
+  blocked: boolean;
 }) {
   const attachments = usePromptInputAttachments();
-  const isDisabled = input.trim().length === 0 && attachments.files.length === 0;
+  const isDisabled = blocked || (input.trim().length === 0 && attachments.files.length === 0);
 
   return (
     <PromptInputSubmit
@@ -209,9 +263,14 @@ export function ChatPanel({
   const [templateCodeType, setTemplateCodeType] = useState<"html" | "tsx">("html");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
   const saveTemplate = useMutation(api.emails.saveTemplate);
 
   const templates = (useQuery(api.emails.listTemplates, {}) ?? []) as TemplateOption[];
+  const dailyPromptStatus = useQuery(api.usage.getDailyPromptStatus, {}) as
+    | DailyPromptStatus
+    | undefined;
+  const hasReachedDailyLimit = dailyPromptStatus?.reached ?? false;
 
   const selectedTemplateIds = useMemo(
     () => (selectedTemplateId === "none" ? [] : [selectedTemplateId]),
@@ -231,6 +290,16 @@ export function ChatPanel({
     id: chatId,
     messages: initialMessages,
     transport: chatTransport,
+    onError: (error) => {
+      const message = error.message ?? "Failed to send prompt.";
+      if (message.toLowerCase().includes("daily limit reached")) {
+        toast.error("Daily limit reached", {
+          description: "You've used all 20 prompts for today. Resets at 00:00 UTC.",
+        });
+        return;
+      }
+      setChatError(message);
+    },
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -271,12 +340,20 @@ export function ChatPanel({
     setMessages([]);
     processedToolCallsRef.current.clear();
     setInput("");
+    setChatError(null);
     onNewChat();
   };
 
   const handleSubmit = (message: PromptInputMessage) => {
     const hasText = Boolean(message.text.trim());
     const hasAttachments = message.files.length > 0;
+
+    if (hasReachedDailyLimit) {
+      toast.error("Daily limit reached", {
+        description: "You've used all 20 prompts for today. Resets at 00:00 UTC.",
+      });
+      return;
+    }
 
     if (!(hasText || hasAttachments) || isStreaming) {
       return;
@@ -290,6 +367,7 @@ export function ChatPanel({
       text: hasText ? message.text : "Attached files for context",
       files: message.files,
     });
+    setChatError(null);
     setInput("");
   };
 
@@ -365,9 +443,12 @@ export function ChatPanel({
             <PanelLeftOpen />
           </Button>
           <h2 className="text-sm font-semibold">AI Email Generator</h2>
-          <Badge variant="outline" className="hidden sm:inline-flex">
-            React Email
-          </Badge>
+          {dailyPromptStatus ? (
+            <PromptUsageRing
+              used={dailyPromptStatus.used}
+              limit={dailyPromptStatus.limit}
+            />
+          ) : null}
         </div>
         <Button onClick={handleNewChat} variant="outline" size="sm">
           <Plus data-icon="inline-start" />
@@ -468,6 +549,7 @@ export function ChatPanel({
       </Conversation>
 
       <div className="border-t border-border/60 bg-background/70 px-4 py-4 pb-4">
+        {chatError ? <p className="mb-2 text-xs text-destructive">{chatError}</p> : null}
         <PromptInput
           onSubmit={handleSubmit}
           className="rounded-[24px] border border-border/70 bg-card/90 p-2.5 shadow-sm"
@@ -606,7 +688,7 @@ export function ChatPanel({
                 </DropdownMenuContent>
               </DropdownMenu>
             </PromptInputTools>
-            <PromptSubmitButton input={input} status={status} />
+            <PromptSubmitButton input={input} status={status} blocked={hasReachedDailyLimit} />
           </PromptInputFooter>
         </PromptInput>
       </div>

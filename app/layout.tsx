@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getToken } from "@/lib/auth-server";
 import "./globals.css";
@@ -29,6 +30,7 @@ export default async function RootLayout({
       <body className={`${geist.className} min-h-screen bg-background antialiased`}>
         <ConvexClientProvider initialToken={initialToken ?? null}>
           <TooltipProvider>{children}</TooltipProvider>
+          <Toaster richColors />
         </ConvexClientProvider>
       </body>
     </html>

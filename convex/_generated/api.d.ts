@@ -15,6 +15,7 @@ import type * as emails from "../emails.js";
 import type * as http from "../http.js";
 import type * as images from "../images.js";
 import type * as messages from "../messages.js";
+import type * as usage from "../usage.js";
 import type * as users from "../users.js";
 
 import type {
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   images: typeof images;
   messages: typeof messages;
+  usage: typeof usage;
   users: typeof users;
 }>;
 

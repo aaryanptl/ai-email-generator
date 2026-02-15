@@ -22,6 +22,16 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid request payload" }, { status: 400 });
   }
 
+  const dailyUsage = await fetchAuthMutation(api.usage.consumeDailyPrompt, {});
+  if (!dailyUsage.allowed) {
+    return Response.json(
+      {
+        error: `Daily limit reached (${dailyUsage.limit} prompts/day).`,
+      },
+      { status: 429 },
+    );
+  }
+
   const safeTemplateIds = Array.isArray(templateIds)
     ? templateIds
         .filter((value): value is string => typeof value === "string")

@@ -88,4 +88,12 @@ export default defineSchema({
   })
     .index("by_chat", ["chatId"])
     .index("by_owner_chat_uploadedAt", ["ownerUserId", "chatId", "uploadedAt"]),
+
+  dailyPromptUsage: defineTable({
+    ownerUserId: v.id("users"),
+    dayKey: v.string(),
+    count: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_owner_dayKey", ["ownerUserId", "dayKey"]),
 });
