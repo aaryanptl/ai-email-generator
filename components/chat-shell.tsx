@@ -35,6 +35,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
   const [compilationError, setCompilationError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"chat" | "preview">("chat");
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isChatStreaming, setIsChatStreaming] = useState(false);
 
   const upsertUser = useMutation(api.users.upsertFromSession);
   const deleteChat = useMutation(api.chats.remove);
@@ -266,6 +267,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
               onEnsureChatPath={handleEnsureChatPath}
               onToggleSidebar={handleToggleHistory}
               onNewChat={handleNewChat}
+              onStatusChange={setIsChatStreaming}
             />
           </ResizablePanel>
 
@@ -276,6 +278,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
               chatId={chatId}
               email={currentEmail}
               compilationError={compilationError}
+              isStreaming={isChatStreaming}
               onEnsureChatPath={handleEnsureChatPath}
             />
           </ResizablePanel>
@@ -314,6 +317,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
               onEnsureChatPath={handleEnsureChatPath}
               onToggleSidebar={handleToggleHistory}
               onNewChat={handleNewChat}
+              onStatusChange={setIsChatStreaming}
             />
           </div>
 
@@ -325,6 +329,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
               chatId={chatId}
               email={currentEmail}
               compilationError={compilationError}
+              isStreaming={isChatStreaming}
               onEnsureChatPath={handleEnsureChatPath}
             />
           </div>

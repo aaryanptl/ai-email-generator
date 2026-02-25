@@ -22,6 +22,7 @@ interface ArtifactPanelProps {
   chatId: string;
   email: EmailArtifact | null;
   compilationError?: string | null;
+  isStreaming?: boolean;
   onEnsureChatPath?: (chatId: string) => void;
 }
 
@@ -194,7 +195,7 @@ function EmailAssetsPanel({
   );
 }
 
-export function ArtifactPanel({ chatId, email, compilationError, onEnsureChatPath }: ArtifactPanelProps) {
+export function ArtifactPanel({ chatId, email, compilationError, isStreaming, onEnsureChatPath }: ArtifactPanelProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code" | "assets">("preview");
   const [copiedHtml, setCopiedHtml] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
@@ -302,7 +303,7 @@ export function ArtifactPanel({ chatId, email, compilationError, onEnsureChatPat
           </div>
         </div>
 
-        {compilationError && (
+        {compilationError && !isStreaming && (
           <div className="flex items-start gap-3 border-b border-amber-700/30 bg-amber-500/10 px-4 py-3 text-amber-700 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <div>
@@ -311,6 +312,34 @@ export function ArtifactPanel({ chatId, email, compilationError, onEnsureChatPat
                 The generated code had an error. Ask the AI to fix it or regenerate the template.
               </div>
             </div>
+          </div>
+        )}
+
+        {isStreaming && (
+          <div className="flex items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="shrink-0">
+              <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeOpacity="0.15" />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray="18 32"
+                className="text-foreground"
+              >
+                <animateTransform
+                  attributeName="transform"
+                  type="rotate"
+                  from="0 10 10"
+                  to="360 10 10"
+                  dur="0.9s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+            </svg>
+            <span className="text-sm text-muted-foreground">Generating email template…</span>
           </div>
         )}
 

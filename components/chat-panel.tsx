@@ -81,6 +81,7 @@ interface ChatPanelProps {
   onEnsureChatPath: (chatId: string) => void;
   onToggleSidebar: () => void;
   onNewChat: () => void;
+  onStatusChange?: (isStreaming: boolean) => void;
 }
 
 interface TemplateOption {
@@ -252,6 +253,7 @@ export function ChatPanel({
   onEnsureChatPath,
   onToggleSidebar,
   onNewChat,
+  onStatusChange,
 }: ChatPanelProps) {
   const processedToolCallsRef = useRef<Set<string>>(new Set());
   const [input, setInput] = useState("");
@@ -303,6 +305,10 @@ export function ChatPanel({
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
+
+  useEffect(() => {
+    onStatusChange?.(isStreaming);
+  }, [isStreaming, onStatusChange]);
 
   const suggestions = [
     "Welcome email with hero banner and CTA",

@@ -1,6 +1,6 @@
 import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
-import { openrouter } from "@/lib/openrouter";
+import { google } from "@/lib/google";
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
 import { compileEmail } from "@/lib/compile-email";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
   };
 
   const result = streamText({
-    model: openrouter("moonshotai/kimi-k2.5"),
+    model: google("gemini-3.1-pro-preview"),
     system: systemPrompt,
     messages: await convertToModelMessages(messages, { tools }),
     tools,
