@@ -1,12 +1,14 @@
 import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
-import { google } from "@/lib/google";
+import { openrouter } from "@/lib/openrouter";
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
 import { compileEmail } from "@/lib/compile-email";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
 export const maxDuration = 60;
+
+const defaultModel = "google/gemini-3-flash-preview";
 
 const clamp = (text: string, maxLength: number) => {
   if (text.length <= maxLength) {
@@ -133,7 +135,11 @@ export async function POST(req: Request) {
   };
 
   const result = streamText({
-    model: google("gemini-3.1-pro-preview"),
+    model: openrouter(process.env.OPENROUTER_MODEL?.trim() || defaultModel, {
+      provider: {
+        sort: "latency",
+      },
+    }),
     system: systemPrompt,
     messages: await convertToModelMessages(messages, { tools }),
     tools,

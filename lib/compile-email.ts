@@ -23,8 +23,13 @@ export async function compileEmail(tsxCode: string): Promise<string> {
   };
 
   // Execute the compiled code in a function scope
-  const fn = new Function("require", "module", "exports", "React", jsCode);
-  fn(customRequire, moduleObj, moduleExports, React);
+  // Note: React is intentionally NOT passed as a separate parameter here.
+  // The AI-generated code may include "import React from 'react'" which Sucrase
+  // transforms into var React = require("react"). Passing React as a parameter too
+  // would cause "Identifier 'React' has already been declared". React is available
+  // via customRequire("react") which handles the transformed import automatically.
+  const fn = new Function("require", "module", "exports", jsCode);
+  fn(customRequire, moduleObj, moduleExports);
 
   // Get the default export (the email component)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
