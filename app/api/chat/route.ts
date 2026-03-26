@@ -1,15 +1,14 @@
 import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
-import { google } from "@ai-sdk/google";
 import { z } from "zod";
+import { DEFAULT_CHAT_MODEL, isChatModelId } from "@/lib/chat-models";
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
-import { buildCategoryPrompt } from "@/lib/prompts/saas-email";
 import { compileEmail } from "@/lib/compile-email";
+import { listSkills, readSkill } from "@/lib/skills";
+import { openrouter } from "@/lib/openrouter";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
 export const maxDuration = 60;
-
-const defaultModel = "gemini-3.1-flash-lite-preview";
 
 const clamp = (text: string, maxLength: number) => {
   if (text.length <= maxLength) {
@@ -66,62 +65,87 @@ const extractLatestUserText = (messages: unknown[]): string => {
   return "";
 };
 
-const inferCategoryFromText = (text: string): string | null => {
+const isEmailGenerationRequest = (text: string): boolean => {
   const normalized = text.toLowerCase();
 
-  if (
-    /cold|outreach|prospect|prospecting|sales email|follow up on my last email|book a call|book a meeting|reply rate/.test(
-      normalized,
-    )
-  ) {
-    return "cold_outreach_b2b";
-  }
-
-  if (
-    /newsletter|weekly update|monthly update|digest|roundup|round-up/.test(
-      normalized,
-    )
-  ) {
-    return "marketing_newsletter";
-  }
-
-  if (/launch|announcement|new feature|changelog|release/.test(normalized)) {
-    return "product_launch";
-  }
-
-  if (
-    /follow up|follow-up|nurture|re-engage|reactivation|win back|win-back/.test(
-      normalized,
-    )
-  ) {
-    return "follow_up_nurture";
-  }
-
-  if (
-    /discount|offer|sale|promo|promotion|black friday|coupon|limited time/.test(
-      normalized,
-    )
-  ) {
-    return "promo_offer";
-  }
-
-  if (
-    /password reset|receipt|invoice|order confirmation|order shipped|verification|otp|transactional/.test(
-      normalized,
-    )
-  ) {
-    return "transactional_update";
-  }
-
-  return null;
+  return /email|newsletter|campaign|template|welcome|reset password|password reset|receipt|invoice|confirmation|launch|promo|follow-up|follow up|transactional/i.test(
+    normalized,
+  );
 };
 
+type StepToolResult = {
+  toolName?: unknown;
+  output?: unknown;
+};
+
+type StepRecord = {
+  toolResults?: unknown;
+};
+
+const getToolResults = (steps: unknown[]): StepToolResult[] => {
+  const results: StepToolResult[] = [];
+
+  for (const step of steps) {
+    if (typeof step !== "object" || step === null) {
+      continue;
+    }
+
+    const record = step as StepRecord;
+    if (!Array.isArray(record.toolResults)) {
+      continue;
+    }
+
+    for (const toolResult of record.toolResults) {
+      if (typeof toolResult === "object" && toolResult !== null) {
+        results.push(toolResult as StepToolResult);
+      }
+    }
+  }
+
+  return results;
+};
+
+const hasSuccessfulToolResult = (steps: unknown[], toolName: string): boolean =>
+  getToolResults(steps).some((result) => {
+    if (result.toolName !== toolName) {
+      return false;
+    }
+
+    const output = result.output;
+    return (
+      typeof output === "object" &&
+      output !== null &&
+      "success" in output &&
+      (output as { success?: unknown }).success === true
+    );
+  });
+
+const hasFailedToolResult = (steps: unknown[], toolName: string): boolean =>
+  getToolResults(steps).some((result) => {
+    if (result.toolName !== toolName) {
+      return false;
+    }
+
+    const output = result.output;
+    return (
+      typeof output === "object" &&
+      output !== null &&
+      "success" in output &&
+      (output as { success?: unknown }).success === false
+    );
+  });
+
 export async function POST(req: Request) {
-  const { id, messages, templateIds, emailCategory } = await req.json();
+  const { id, messages, templateIds, model } = await req.json();
 
   if (typeof id !== "string" || !Array.isArray(messages)) {
     return Response.json({ error: "Invalid request payload" }, { status: 400 });
   }
+
+  const selectedModel =
+    typeof model === "string" && isChatModelId(model)
+      ? model
+      : DEFAULT_CHAT_MODEL;
 
   const dailyUsage = await fetchAuthMutation(api.usage.consumeDailyPrompt, {});
   if (!dailyUsage.allowed) {
@@ -187,23 +211,110 @@ export async function POST(req: Request) {
     : "";
 
   const latestUserText = extractLatestUserText(messages);
-  const inferredCategory = inferCategoryFromText(latestUserText);
-  const explicitCategory =
-    typeof emailCategory === "string" && emailCategory.trim()
-      ? emailCategory.trim()
-      : null;
-  const categoryPrompt = buildCategoryPrompt(explicitCategory ?? inferredCategory);
+  const skillCatalog = await listSkills();
+  const hasFrontendDesignSkill = skillCatalog.some(
+    (skill) => skill.slug === "frontend-design",
+  );
 
-  const categoryPromptSection = categoryPrompt
-    ? `\n\nCampaign category guidance:\n${categoryPrompt}\n\nApply these category rules while still following all core system rules.`
+  const skillsPromptSection =
+    skillCatalog.length > 0
+      ? `\n\nLocal skills available:\n${skillCatalog
+          .map((skill) => `- ${skill.slug}: ${skill.description}`)
+          .join(
+            "\n",
+          )}\n\nBefore any generate_email tool call, first call read_frontend_design whenever that skill is available. Treat that skill load as required preparation for email generation, not as an optional step. Use the loaded skill guidance to shape the final design decisions.`
+      : "";
+
+  const designRequestPromptSection =
+    hasFrontendDesignSkill && isEmailGenerationRequest(latestUserText)
+      ? "\n\nThe latest user request is asking for an email. You must first call plan_email, then call read_frontend_design, and only then call generate_email."
+      : "";
+  const requiresToolExecution = isEmailGenerationRequest(latestUserText);
+    const toolCompletionPromptSection = requiresToolExecution
+    ? "\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call generate_email with the complete template code.\n4. If generate_email returns success: false, revise the code and call generate_email again.\n5. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require(\"@react-email/components\").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations."
     : "";
 
-  const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${templatePromptSection}${categoryPromptSection}`;
+  const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${templatePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
 
   const tools = {
+    plan_email: tool({
+      description:
+        "Create a concise implementation brief for the requested email before any design or code generation work begins.",
+        inputSchema: z.object({
+        goal: z
+          .string()
+          .optional()
+          .describe("The primary business goal of the email."),
+        audience: z
+          .string()
+          .optional()
+          .describe("The intended audience for the email."),
+        tone: z
+          .string()
+          .optional()
+          .describe("The writing tone for the email."),
+        visualDirection: z
+          .string()
+          .optional()
+          .describe("A concise visual direction for the design."),
+        primaryCta: z
+          .string()
+          .optional()
+          .describe("The main call to action for the email."),
+        sections: z
+          .array(z.string())
+          .optional()
+          .describe("Ordered list of sections to include in the email."),
+      }),
+      execute: async (input) => ({
+        success: true,
+        goal: input.goal?.trim() || "Generate a clear, high-converting email.",
+        audience: input.audience?.trim() || "The intended recipient of the email.",
+        tone: input.tone?.trim() || "Clear, credible, and concise.",
+        visualDirection:
+          input.visualDirection?.trim() ||
+          "Modern editorial layout with strong hierarchy and a single prominent CTA.",
+        primaryCta: input.primaryCta?.trim() || "Review the main call to action.",
+        sections:
+          input.sections?.filter((section) => section.trim().length > 0) ?? [
+            "Preview",
+            "Hero",
+            "Body content",
+            "Primary CTA",
+            "Footer",
+          ],
+      }),
+    }),
+    read_frontend_design: tool({
+      description:
+        "Load the frontend-design skill from the local repository. Use this before generating any email so the visual output follows the design skill.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const loadedSkill = await readSkill("frontend-design");
+
+          return {
+            success: true,
+            skill: loadedSkill.slug,
+            name: loadedSkill.name,
+            description: loadedSkill.description,
+            content: loadedSkill.content,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            skill: "frontend-design",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to read skill file.",
+          };
+        }
+      },
+    }),
     generate_email: tool({
       description:
-        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. The tsxCode parameter must contain the complete email component code.",
+        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design before using this tool whenever that skill is available. The tsxCode parameter must contain the complete email component code.",
       inputSchema: z.object({
         name: z
           .string()
@@ -211,12 +322,12 @@ export async function POST(req: Request) {
         description: z
           .string()
           .describe("Brief description of what the email is for"),
-        tsxCode: z
-          .string()
-          .describe(
-            "The complete TSX/JS code for the email template using React.createElement and @react-email/components. Must use require() and module.exports.default.",
-          ),
-      }),
+          tsxCode: z
+            .string()
+            .describe(
+              "The complete TSX/JS code for the email template using React.createElement and @react-email/components. Must use require() and module.exports.default. Export a component function, for example: module.exports.default = function Email() { return React.createElement(...); }. Do not export React.createElement(...) directly. Import the real React Email components from require('@react-email/components') and do not define local replacement components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.",
+            ),
+        }),
       execute: async ({ name, description, tsxCode }) => {
         try {
           const htmlCode = await compileEmail(tsxCode);
@@ -246,11 +357,54 @@ export async function POST(req: Request) {
   };
 
   const result = streamText({
-    model: google(process.env.GOOGLE_MODEL?.trim() || defaultModel),
+    model: openrouter(selectedModel),
     system: systemPrompt,
     messages: await convertToModelMessages(messages, { tools }),
     tools,
-    stopWhen: stepCountIs(6),
+    toolChoice: requiresToolExecution ? "required" : "auto",
+    prepareStep: async ({ steps }) => {
+      if (!requiresToolExecution) {
+        return undefined;
+      }
+
+      const planned = hasSuccessfulToolResult(steps, "plan_email");
+      const designLoaded =
+        !hasFrontendDesignSkill ||
+        hasSuccessfulToolResult(steps, "read_frontend_design");
+      const emailGenerated = hasSuccessfulToolResult(steps, "generate_email");
+      const emailFailed = hasFailedToolResult(steps, "generate_email");
+
+      if (!planned) {
+        return {
+          activeTools: ["plan_email"],
+          toolChoice: { type: "tool", toolName: "plan_email" },
+          system: `${systemPrompt}\n\nCurrent step: create the brief first. Do not call any other tool yet.`,
+        };
+      }
+
+      if (!designLoaded) {
+        return {
+          activeTools: ["read_frontend_design"],
+          toolChoice: { type: "tool", toolName: "read_frontend_design" },
+          system: `${systemPrompt}\n\nCurrent step: load the frontend-design skill and use it to decide the email's visual direction.`,
+        };
+      }
+
+      if (!emailGenerated || emailFailed) {
+        return {
+          activeTools: ["generate_email"],
+          toolChoice: { type: "tool", toolName: "generate_email" },
+          system: `${systemPrompt}\n\nCurrent step: generate the full email template now. If the compile fails, fix the code and call generate_email again.`,
+        };
+      }
+
+      return {
+        activeTools: [],
+        system: `${systemPrompt}\n\nCurrent step: write the short final response only. Do not call more tools.`,
+      };
+    },
+
+    stopWhen: stepCountIs(8),
   });
 
   return result.toUIMessageStreamResponse({

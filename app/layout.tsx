@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getToken } from "@/lib/auth-server";
@@ -26,11 +27,19 @@ export default async function RootLayout({
   const initialToken = await getToken();
 
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
-      <body className={`${geist.className} min-h-screen bg-background antialiased`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geist.variable} ${geistMono.variable}`}
+    >
+      <body
+        className={`${geist.className} min-h-screen bg-mesh-soft antialiased`}
+      >
         <ConvexClientProvider initialToken={initialToken ?? null}>
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster richColors />
+          <ThemeProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster richColors />
+          </ThemeProvider>
         </ConvexClientProvider>
       </body>
     </html>

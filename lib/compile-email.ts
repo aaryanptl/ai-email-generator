@@ -31,19 +31,31 @@ export async function compileEmail(tsxCode: string): Promise<string> {
   const fn = new Function("require", "module", "exports", jsCode);
   fn(customRequire, moduleObj, moduleExports);
 
-  // Get the default export (the email component)
+  // Get the default export. Prefer a component function, but tolerate a
+  // pre-constructed React element because model output is sometimes shaped that way.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const exports = moduleObj.exports as any;
-  const EmailComponent: React.ComponentType = exports.default || exports;
+  const emailExport = exports.default || exports;
 
-  if (!EmailComponent || typeof EmailComponent !== "function") {
+  if (!emailExport) {
     throw new Error(
       "Email template must export a default React component via module.exports.default"
     );
   }
 
-  // Render the component to HTML
-  const element = React.createElement(EmailComponent, {});
+  const element =
+    typeof emailExport === "function"
+      ? React.createElement(emailExport as React.ComponentType, {})
+      : React.isValidElement(emailExport)
+        ? emailExport
+        : null;
+
+  if (!element) {
+    throw new Error(
+      "Email template must export a default React component function or a valid React element via module.exports.default"
+    );
+  }
+
   const html = await render(element);
 
   return html;
