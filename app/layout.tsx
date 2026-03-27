@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { getToken } from "@/lib/auth-server";
 import "./globals.css";
 
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 const geist = Geist({
   subsets: ["latin"],

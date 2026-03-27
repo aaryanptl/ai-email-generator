@@ -2,15 +2,19 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useMutation, useQuery } from "convex/react";
-import { DefaultChatTransport, type ChatStatus, type FileUIPart, type UIMessage } from "ai";
+import {
+  DefaultChatTransport,
+  type ChatStatus,
+  type FileUIPart,
+  type UIMessage,
+} from "ai";
 import {
   MessageSquare,
-  PanelLeftOpen,
-  Plus,
   PlusIcon,
   Palette,
   Loader2,
   Filter,
+  Bot,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -23,7 +27,6 @@ import {
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import {
@@ -48,6 +51,7 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import { motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -66,12 +70,22 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
+import {
+  CHAT_MODELS,
+  DEFAULT_CHAT_MODEL,
+  type ChatModelId,
+} from "@/lib/chat-models";
+import { cn } from "@/lib/utils";
 
 export interface EmailData {
   name: string;
@@ -87,8 +101,6 @@ interface ChatPanelProps {
   initialMessages: UIMessage[];
   onEmailGenerated: (data: EmailData) => void;
   onEnsureChatPath: (chatId: string) => void;
-  onToggleSidebar: () => void;
-  onNewChat: () => void;
   onStatusChange?: (isStreaming: boolean) => void;
 }
 
@@ -120,49 +132,6 @@ interface DailyPromptStatus {
   dayKey: string;
 }
 
-function PromptUsageRing({ used, limit }: { used: number; limit: number }) {
-  const remaining = Math.max(limit - used, 0);
-  const ratio = Math.min(used / limit, 1);
-  const radius = 9;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - ratio);
-  const isExhausted = remaining === 0;
-
-  return (
-    <div
-      className="flex items-center gap-1.5"
-      title={`${remaining}/${limit} prompts left today (resets at 00:00 UTC)`}
-    >
-      <svg width="22" height="22" viewBox="0 0 22 22" className="-rotate-90">
-        <circle
-          cx="11"
-          cy="11"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          className="text-border"
-          strokeWidth="2.5"
-        />
-        <circle
-          cx="11"
-          cy="11"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          className={isExhausted ? "text-destructive" : "text-foreground"}
-          strokeWidth="2.5"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className={`text-xs tabular-nums ${isExhausted ? "text-destructive" : "text-muted-foreground"}`}>
-        {remaining}/{limit}
-      </span>
-    </div>
-  );
-}
-
 function useDisplayMessages(messages: UIMessage[]) {
   return useMemo(() => {
     return messages.filter((message) => {
@@ -178,7 +147,11 @@ function useDisplayMessages(messages: UIMessage[]) {
         if (part.type === "text") {
           return part.text.trim().length > 0;
         }
-        return part.type === "reasoning" || part.type === "file" || part.type.startsWith("tool-");
+        return (
+          part.type === "reasoning" ||
+          part.type === "file" ||
+          part.type.startsWith("tool-")
+        );
       });
     });
   }, [messages]);
@@ -217,7 +190,8 @@ function PromptSubmitButton({
   blocked: boolean;
 }) {
   const attachments = usePromptInputAttachments();
-  const isDisabled = blocked || (input.trim().length === 0 && attachments.files.length === 0);
+  const isDisabled =
+    blocked || (input.trim().length === 0 && attachments.files.length === 0);
 
   return (
     <PromptInputSubmit
@@ -228,18 +202,124 @@ function PromptSubmitButton({
   );
 }
 
-function PromptAddAttachmentButton() {
+function PromptAddAttachmentButton({
+  selectedTemplateId,
+  templates,
+  onSelectTemplate,
+  selectedEmailCategory,
+  onSelectEmailCategory,
+  activeEmailCategoryLabel,
+  onOpenAddTemplate,
+}: {
+  selectedTemplateId: string;
+  templates: TemplateOption[];
+  onSelectTemplate: (value: string) => void;
+  selectedEmailCategory: string;
+  onSelectEmailCategory: (value: string) => void;
+  activeEmailCategoryLabel: string;
+  onOpenAddTemplate: () => void;
+}) {
   const attachments = usePromptInputAttachments();
 
   return (
-    <button
-      type="button"
-      onClick={() => attachments.openFileDialog()}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-input bg-background hover:bg-accent"
-      aria-label="Attach files"
-    >
-      <PlusIcon className="size-4" />
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-input bg-background hover:bg-accent"
+          aria-label="Open prompt tools"
+        >
+          <PlusIcon className="size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-56 rounded-2xl border-border/40 p-1 shadow-2xl"
+      >
+        <DropdownMenuItem
+          className="rounded-xl px-3 py-2.5 text-xs font-semibold"
+          onSelect={(event) => {
+            event.preventDefault();
+            attachments.openFileDialog();
+          }}
+        >
+          <PlusIcon className="size-4" />
+          Add files or photos
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="my-1 opacity-40" />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="rounded-xl px-3 py-2.5 text-xs font-semibold">
+            <Palette className="size-4" />
+            Use style
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-56 rounded-2xl border-border/40 p-1 shadow-2xl">
+            <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-widest opacity-50 px-2 py-1.5">
+              Design Reference
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={selectedTemplateId}
+              onValueChange={onSelectTemplate}
+              className="space-y-0.5"
+            >
+              <DropdownMenuRadioItem
+                value="none"
+                className="rounded-xl text-xs font-semibold py-2"
+              >
+                Blank Slate
+              </DropdownMenuRadioItem>
+              {templates.map((template) => (
+                <DropdownMenuRadioItem
+                  key={template._id}
+                  value={template._id}
+                  className="rounded-xl text-xs font-semibold py-2"
+                >
+                  {template.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator className="my-1 opacity-40" />
+            <DropdownMenuItem
+              className="rounded-xl text-xs font-medium py-2 focus:bg-foreground focus:text-background"
+              onSelect={(event) => {
+                event.preventDefault();
+                onOpenAddTemplate();
+              }}
+            >
+              + Import Custom Style
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="rounded-xl px-3 py-2.5 text-xs font-semibold">
+            <Filter className="size-4" />
+            Type
+            <DropdownMenuShortcut className="max-w-[88px] truncate text-[10px]">
+              {activeEmailCategoryLabel}
+            </DropdownMenuShortcut>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-56 rounded-2xl border-border/40 p-1 shadow-2xl">
+            <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-widest opacity-50 px-2 py-1.5">
+              Campaign Category
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={selectedEmailCategory}
+              onValueChange={onSelectEmailCategory}
+              className="space-y-0.5"
+            >
+              {EMAIL_CATEGORY_OPTIONS.map((option) => (
+                <DropdownMenuRadioItem
+                  key={option.value}
+                  value={option.value}
+                  className="rounded-xl text-xs font-semibold py-2"
+                >
+                  {option.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -259,7 +339,10 @@ function MessageFiles({
   }
 
   return (
-    <Attachments variant="grid" className={from === "assistant" ? "ml-0" : "ml-auto"}>
+    <Attachments
+      variant="grid"
+      className={from === "assistant" ? "ml-0" : "ml-auto"}
+    >
       {files.map((file) => (
         <Attachment key={file.id} data={file}>
           <AttachmentPreview />
@@ -274,8 +357,6 @@ export function ChatPanel({
   initialMessages,
   onEmailGenerated,
   onEnsureChatPath,
-  onToggleSidebar,
-  onNewChat,
   onStatusChange,
 }: ChatPanelProps) {
   const processedToolCallsRef = useRef<Set<string>>(new Set());
@@ -283,17 +364,24 @@ export function ChatPanel({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("none");
   const [selectedEmailCategory, setSelectedEmailCategory] =
     useState<string>("auto");
+  const [selectedModel, setSelectedModel] =
+    useState<ChatModelId>(DEFAULT_CHAT_MODEL);
   const [isAddTemplateOpen, setIsAddTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   const [templateCode, setTemplateCode] = useState("");
-  const [templateCodeType, setTemplateCodeType] = useState<"html" | "tsx">("html");
+  const [templateCodeType, setTemplateCodeType] = useState<"html" | "tsx">(
+    "html",
+  );
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
-  const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
+  const [saveTemplateError, setSaveTemplateError] = useState<string | null>(
+    null,
+  );
   const [chatError, setChatError] = useState<string | null>(null);
   const saveTemplate = useMutation(api.emails.saveTemplate);
 
-  const templates = (useQuery(api.emails.listTemplates, {}) ?? []) as TemplateOption[];
+  const templates = (useQuery(api.emails.listTemplates, {}) ??
+    []) as TemplateOption[];
   const dailyPromptStatus = useQuery(api.usage.getDailyPromptStatus, {}) as
     | DailyPromptStatus
     | undefined;
@@ -313,11 +401,12 @@ export function ChatPanel({
       body: {
         templateIds: selectedTemplateIds,
         emailCategory,
+        model: selectedModel,
       },
     });
-  }, [selectedTemplateIds, selectedEmailCategory]);
+  }, [selectedTemplateIds, selectedEmailCategory, selectedModel]);
 
-  const { messages, sendMessage, status, setMessages } = useChat({
+  const { messages, sendMessage, status } = useChat({
     id: chatId,
     messages: initialMessages,
     transport: chatTransport,
@@ -325,7 +414,8 @@ export function ChatPanel({
       const message = error.message ?? "Failed to send prompt.";
       if (message.toLowerCase().includes("daily limit reached")) {
         toast.error("Daily limit reached", {
-          description: "You've used all 20 prompts for today. Resets at 00:00 UTC.",
+          description:
+            "You've used all 20 prompts for today. Resets at 00:00 UTC.",
         });
         return;
       }
@@ -338,13 +428,6 @@ export function ChatPanel({
   useEffect(() => {
     onStatusChange?.(isStreaming);
   }, [isStreaming, onStatusChange]);
-
-  const suggestions = [
-    "Welcome email with hero banner and CTA",
-    "Password reset notification",
-    "Monthly newsletter with sections",
-    "Order confirmation with details",
-  ];
 
   useEffect(() => {
     for (const message of messages) {
@@ -371,21 +454,14 @@ export function ChatPanel({
 
   const displayMessages = useDisplayMessages(messages);
 
-  const handleNewChat = () => {
-    setMessages([]);
-    processedToolCallsRef.current.clear();
-    setInput("");
-    setChatError(null);
-    onNewChat();
-  };
-
   const handleSubmit = (message: PromptInputMessage) => {
     const hasText = Boolean(message.text.trim());
     const hasAttachments = message.files.length > 0;
 
     if (hasReachedDailyLimit) {
       toast.error("Daily limit reached", {
-        description: "You've used all 20 prompts for today. Resets at 00:00 UTC.",
+        description:
+          "You've used all 20 prompts for today. Resets at 00:00 UTC.",
       });
       return;
     }
@@ -436,7 +512,10 @@ export function ChatPanel({
           }),
         });
 
-        const payload = (await response.json()) as { htmlCode?: string; error?: string };
+        const payload = (await response.json()) as {
+          htmlCode?: string;
+          error?: string;
+        };
         if (!response.ok || !payload.htmlCode) {
           throw new Error(payload.error ?? "Could not compile TSX template.");
         }
@@ -474,292 +553,392 @@ export function ChatPanel({
     setSelectedEmailCategory(value);
   };
 
+  const handleModelSelection = (value: string) => {
+    setSelectedModel(value as ChatModelId);
+  };
+
   const activeEmailCategoryLabel =
-    EMAIL_CATEGORY_OPTIONS.find((option) => option.value === selectedEmailCategory)
-      ?.label ?? "Auto detect";
+    EMAIL_CATEGORY_OPTIONS.find(
+      (option) => option.value === selectedEmailCategory,
+    )?.label ?? "Auto detect";
+
+  const activeModelLabel =
+    CHAT_MODELS.find((model) => model.id === selectedModel)?.label ?? "Model";
 
   return (
-    <div className="flex h-full flex-col bg-card/80 backdrop-blur">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Button onClick={onToggleSidebar} variant="ghost" size="icon-sm" aria-label="Open chats">
-            <PanelLeftOpen />
-          </Button>
-          <h2 className="text-sm font-semibold">AI Email Generator</h2>
-          {dailyPromptStatus ? (
-            <PromptUsageRing
-              used={dailyPromptStatus.used}
-              limit={dailyPromptStatus.limit}
-            />
-          ) : null}
-        </div>
-        <Button onClick={handleNewChat} variant="outline" size="sm">
-          <Plus data-icon="inline-start" />
-          New Chat
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+        <Conversation className="h-full custom-scrollbar">
+          <ConversationContent
+            className={cn(
+              "mx-auto flex w-full max-w-4xl flex-col px-4 sm:px-5",
+              displayMessages.length === 0
+                ? "min-h-0 flex-1 gap-0 pt-6 pb-4"
+                : "min-h-full gap-8 pb-24 pt-4",
+            )}
+          >
+            {displayMessages.length === 0 ? (
+              <div className="flex w-full flex-col items-stretch text-center sm:text-left">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="mb-6 space-y-3 sm:mb-8"
+                >
+                  <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-xl bg-foreground shadow-md sm:mx-0">
+                    <div className="size-5 rounded-full border-[2.5px] border-background" />
+                  </div>
+                  <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[1.65rem]">
+                    Your AI Copilot Awaits.
+                  </h1>
+                  <p className="mx-auto max-w-lg text-sm leading-relaxed text-muted-foreground sm:mx-0">
+                    Design professional, high-conversion email campaigns in
+                    seconds. Start with a template or a custom prompt.
+                  </p>
+                </motion.div>
 
-      <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="gap-4 px-3 py-4">
-          {displayMessages.length === 0 ? (
-            <ConversationEmptyState
-              icon={<MessageSquare className="size-10" />}
-              title="Create beautiful emails with AI"
-              description="Describe your campaign, layout, and tone to generate a production-ready React Email template."
-            >
-              <div className="mt-2 grid w-full max-w-sm gap-2">
-                {suggestions.map((suggestion) => (
-                  <Button
-                    key={suggestion}
-                    onClick={() => setInput(suggestion)}
-                    variant="outline"
-                    className="h-auto justify-start whitespace-normal py-2 text-left text-xs"
-                  >
-                    {suggestion}
-                  </Button>
-                ))}
+                <div className="mx-auto flex w-full max-w-xl flex-col gap-3 sm:mx-0 sm:max-w-2xl">
+                  {[
+                    {
+                      title: "Marketing",
+                      desc: "Newsletters & product launches",
+                      icon: <Palette className="size-5 text-chart-2" />,
+                      prompt:
+                        "Design a sleek marketing newsletter for a new SaaS product launch with a hero section and three feature highlights.",
+                    },
+                    {
+                      title: "Transactional",
+                      desc: "Orders & account updates",
+                      icon: <MessageSquare className="size-5 text-chart-1" />,
+                      prompt:
+                        "Create a modern order confirmation email with a summary table, shipping details, and a 'track order' button.",
+                    },
+                    {
+                      title: "Welcome",
+                      desc: "Onboarding & user greetings",
+                      icon: <PlusIcon className="size-5 text-chart-3" />,
+                      prompt:
+                        "Draft a friendly welcome email for new subscribers that introduces the team and provides three getting-started steps.",
+                    },
+                  ].map((item, idx) => (
+                    <motion.button
+                      key={item.title}
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.05 * (idx + 1) }}
+                      onClick={() => setInput(item.prompt)}
+                      type="button"
+                      className="group relative flex w-full flex-row items-center gap-4 rounded-2xl border border-border/60 bg-muted/25 p-4 text-left transition-all hover:border-foreground/15 hover:bg-muted/35 hover:shadow-md sm:gap-5 sm:p-4"
+                    >
+                      <div className="shrink-0 rounded-lg bg-card p-2.5 shadow-sm ring-1 ring-border/40 transition-transform group-hover:scale-[1.02]">
+                        {item.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-foreground">
+                          {item.title}
+                        </div>
+                        <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                          {item.desc}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80 transition-colors group-hover:text-foreground">
+                        Try&nbsp;&rarr;
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
               </div>
-            </ConversationEmptyState>
-          ) : (
-            displayMessages.map((message, messageIndex) => {
-              const reasoningParts = message.parts.filter((part) => part.type === "reasoning");
-              const reasoningText = reasoningParts
-                .map((part) => part.text)
-                .join("\n\n");
-              const lastPart = message.parts.at(-1);
-              const isReasoningStreaming =
-                messageIndex === displayMessages.length - 1 &&
-                isStreaming &&
-                lastPart?.type === "reasoning";
+            ) : (
+              displayMessages.map((message, messageIndex) => {
+                const reasoningParts = message.parts.filter(
+                  (part) => part.type === "reasoning",
+                );
+                const reasoningText = reasoningParts
+                  .map((part) => part.text)
+                  .join("\n\n");
+                const lastPart = message.parts.at(-1);
+                const isReasoningStreaming =
+                  messageIndex === displayMessages.length - 1 &&
+                  isStreaming &&
+                  lastPart?.type === "reasoning";
 
-              return (
-                <Message key={message.id} from={message.role}>
-                  <MessageFiles parts={message.parts} from={message.role} />
-                  <MessageContent>
-                    {reasoningText ? (
-                      <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
-                        <ReasoningTrigger />
-                        <ReasoningContent>{reasoningText}</ReasoningContent>
-                      </Reasoning>
-                    ) : null}
+                return (
+                  <Message key={message.id} from={message.role}>
+                    <MessageFiles parts={message.parts} from={message.role} />
+                    <MessageContent>
+                      {reasoningText ? (
+                        <Reasoning
+                          className="w-full"
+                          isStreaming={isReasoningStreaming}
+                        >
+                          <ReasoningTrigger />
+                          <ReasoningContent>{reasoningText}</ReasoningContent>
+                        </Reasoning>
+                      ) : null}
 
-                    {message.parts.map((part, index) => {
-                      if (part.type === "text") {
-                        if (!part.text.trim()) {
-                          return null;
+                      {message.parts.map((part, index) => {
+                        if (part.type === "text") {
+                          if (!part.text.trim()) {
+                            return null;
+                          }
+
+                          return (
+                            <MessageResponse key={`${message.id}-${index}`}>
+                              {part.text}
+                            </MessageResponse>
+                          );
                         }
 
-                        return (
-                          <MessageResponse key={`${message.id}-${index}`}>
-                            {part.text}
-                          </MessageResponse>
-                        );
-                      }
-
-                      if (part.type.startsWith("tool-")) {
-                        const toolName = part.type.replace("tool-", "");
-                        const toolState = "state" in part ? String(part.state) : "unknown";
-                        return (
-                          <div
-                            key={`${message.id}-${index}`}
-                            className="rounded-xl border border-border/70 bg-muted/35 px-3 py-2"
-                          >
-                            <div className="flex items-center justify-between gap-2 text-xs">
-                              <span className="font-medium">Tool: {toolName}</span>
-                              <span className="text-muted-foreground">{toolState}</span>
+                        if (part.type.startsWith("tool-")) {
+                          const toolName = part.type.replace("tool-", "");
+                          const toolState =
+                            "state" in part ? String(part.state) : "unknown";
+                          return (
+                            <div
+                              key={`${message.id}-${index}`}
+                              className="rounded-xl border border-border/70 bg-muted/35 px-3 py-2"
+                            >
+                              <div className="flex items-center justify-between gap-2 text-xs">
+                                <span className="font-medium">
+                                  Tool: {toolName}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {toolState}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      }
+                          );
+                        }
 
-                      return null;
-                    })}
-                  </MessageContent>
-                </Message>
-              );
-            })
-          )}
+                        return null;
+                      })}
+                    </MessageContent>
+                  </Message>
+                );
+              })
+            )}
 
-          {isStreaming ? (
-            <Message from="assistant">
-              <MessageContent>
-                <Shimmer>Thinking...</Shimmer>
-              </MessageContent>
-            </Message>
+            {isStreaming ? (
+              <Message from="assistant">
+                <MessageContent>
+                  <Shimmer>Thinking...</Shimmer>
+                </MessageContent>
+              </Message>
+            ) : null}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
+      </div>
+
+      <div className="shrink-0 border-t border-border/50 bg-card px-3 py-2 shadow-premium-reverse sm:px-4">
+        <div className="mx-auto w-full max-w-4xl">
+          {chatError ? (
+            <p className="mb-2 text-xs text-destructive">{chatError}</p>
           ) : null}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
+          <PromptInput
+            onSubmit={handleSubmit}
+            className="rounded-2xl border border-border/70 bg-card p-1.5 shadow-premium dark:bg-surface-elevated"
+            accept="image/*,application/pdf,text/*"
+            multiple
+            maxFiles={8}
+            maxFileSize={10 * 1024 * 1024}
+          >
+            <PromptInputHeader>
+              <PromptInputAttachmentsInline />
+            </PromptInputHeader>
+            <PromptInputBody>
+              <PromptInputTextarea
+                value={input}
+                onChange={(event) => setInput(event.currentTarget.value)}
+                placeholder="Message AI Email Generator"
+                className="min-h-10 max-h-28 border-0 bg-transparent px-2 py-1 text-sm shadow-none"
+              />
+            </PromptInputBody>
+            <PromptInputFooter className="pt-0">
+              <Dialog
+                open={isAddTemplateOpen}
+                onOpenChange={setIsAddTemplateOpen}
+              >
+                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl rounded-3xl border-border/40 p-6 shadow-3xl">
+                  <DialogHeader>
+                    <DialogTitle className="text-xl font-semibold">
+                      Add Design Reference
+                    </DialogTitle>
+                    <DialogDescription className="text-xs font-medium">
+                      Inject a custom theme or existing code to guide the
+                      AI&apos;s output style.
+                    </DialogDescription>
+                  </DialogHeader>
 
-      <div className="border-t border-border/60 bg-background/70 px-4 py-4 pb-4">
-        {chatError ? <p className="mb-2 text-xs text-destructive">{chatError}</p> : null}
-        <PromptInput
-          onSubmit={handleSubmit}
-          className="rounded-[24px] border border-border/70 bg-card/90 p-2.5 shadow-sm"
-          accept="image/*,application/pdf,text/*"
-          multiple
-          maxFiles={8}
-          maxFileSize={10 * 1024 * 1024}
-        >
-          <PromptInputHeader>
-            <PromptInputAttachmentsInline />
-          </PromptInputHeader>
-          <PromptInputBody>
-            <PromptInputTextarea
-              value={input}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              placeholder="Message AI Email Generator"
-              className="max-h-36 min-h-[56px] border-0 bg-transparent px-2 py-1.5 text-base shadow-none"
-            />
-          </PromptInputBody>
-          <PromptInputFooter className="pt-1">
-            <Dialog open={isAddTemplateOpen} onOpenChange={setIsAddTemplateOpen}>
-              <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-                <DialogHeader>
-                  <DialogTitle>Add theme template</DialogTitle>
-                  <DialogDescription>
-                    Paste HTML or TSX code to save a reusable theme reference.
-                  </DialogDescription>
-                </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="grid gap-2">
+                      <Label
+                        htmlFor="template-name"
+                        className="text-[11px] font-medium text-muted-foreground"
+                      >
+                        Template Name
+                      </Label>
+                      <Input
+                        id="template-name"
+                        placeholder="e.g. Minimalist Product Update"
+                        value={templateName}
+                        onChange={(event) =>
+                          setTemplateName(event.currentTarget.value)
+                        }
+                        className="rounded-xl h-10 border-border/40 bg-muted/20"
+                      />
+                    </div>
 
-                <div className="space-y-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="template-name">Template name</Label>
-                    <Input
-                      id="template-name"
-                      placeholder="e.g. Product launch clean"
-                      value={templateName}
-                      onChange={(event) => setTemplateName(event.currentTarget.value)}
-                    />
-                  </div>
+                    <div className="grid gap-2">
+                      <Label
+                        htmlFor="template-description"
+                        className="text-[11px] font-medium text-muted-foreground"
+                      >
+                        Context (Optional)
+                      </Label>
+                      <Input
+                        id="template-description"
+                        placeholder="Briefly describe the design style..."
+                        value={templateDescription}
+                        onChange={(event) =>
+                          setTemplateDescription(event.currentTarget.value)
+                        }
+                        className="rounded-xl h-10 border-border/40 bg-muted/20"
+                      />
+                    </div>
 
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="template-description">Description</Label>
-                    <Input
-                      id="template-description"
-                      placeholder="Optional description"
-                      value={templateDescription}
-                      onChange={(event) =>
-                        setTemplateDescription(event.currentTarget.value)
-                      }
-                    />
-                  </div>
+                    <div className="flex gap-4">
+                      <div className="grid gap-2 flex-1">
+                        <Label className="text-[11px] font-medium text-muted-foreground">
+                          Format
+                        </Label>
+                        <select
+                          value={templateCodeType}
+                          onChange={(event) =>
+                            setTemplateCodeType(
+                              event.currentTarget.value as "html" | "tsx",
+                            )
+                          }
+                          className="border-border/40 bg-muted/20 h-10 rounded-xl border px-3 text-sm outline-none focus:ring-1 focus:ring-foreground/20 transition-all font-semibold"
+                        >
+                          <option value="html">HTML Code</option>
+                          <option value="tsx">React TSX</option>
+                        </select>
+                      </div>
+                    </div>
 
-                  <div className="grid gap-1.5">
-                    <Label>Code type</Label>
-                    <select
-                      value={templateCodeType}
-                      onChange={(event) =>
-                        setTemplateCodeType(event.currentTarget.value as "html" | "tsx")
-                      }
-                      className="border-input bg-input/30 h-9 w-[160px] rounded-4xl border px-3 text-sm outline-none"
-                    >
-                      <option value="html">HTML</option>
-                      <option value="tsx">TSX</option>
-                    </select>
-                  </div>
+                    <div className="grid gap-2">
+                      <Label
+                        htmlFor="template-code"
+                        className="text-[11px] font-medium text-muted-foreground"
+                      >
+                        Source Code
+                      </Label>
+                      <Textarea
+                        id="template-code"
+                        placeholder={
+                          templateCodeType === "html"
+                            ? "Paste raw HTML here..."
+                            : "Paste React Email components here..."
+                        }
+                        value={templateCode}
+                        onChange={(event) =>
+                          setTemplateCode(event.currentTarget.value)
+                        }
+                        className="h-40 min-h-40 max-h-40 overflow-y-auto font-mono text-[11px] rounded-xl border-border/40 bg-muted/20 p-4"
+                      />
+                    </div>
 
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="template-code">Template code</Label>
-                    <Textarea
-                      id="template-code"
-                      placeholder={
-                        templateCodeType === "html"
-                          ? "Paste full HTML email code"
-                          : "Paste full React Email TSX code"
-                      }
-                      value={templateCode}
-                      onChange={(event) => setTemplateCode(event.currentTarget.value)}
-                      className="h-52 min-h-52 max-h-52 overflow-y-auto font-mono text-xs"
-                    />
-                  </div>
-
-                  {saveTemplateError ? (
-                    <p className="text-xs text-destructive">{saveTemplateError}</p>
-                  ) : null}
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    onClick={() => void handleManualTemplateSave()}
-                    disabled={isSavingTemplate}
-                  >
-                    {isSavingTemplate ? (
-                      <Loader2 data-icon="inline-start" className="animate-spin" />
+                    {saveTemplateError ? (
+                      <p className="text-xs text-destructive font-medium">
+                        {saveTemplateError}
+                      </p>
                     ) : null}
-                    {isSavingTemplate ? "Saving" : "Save template"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  </div>
 
-            <PromptInputTools>
-              <PromptAddAttachmentButton />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" className="gap-1.5 px-3">
-                    <Palette className="size-4" />
-                    <span className="text-xs">Theme</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuLabel>Choose theme</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={selectedTemplateId}
-                    onValueChange={handleThemeSelection}
-                  >
-                    <DropdownMenuRadioItem value="none">
-                      No reference template
-                    </DropdownMenuRadioItem>
-                    {templates.map((template) => (
-                      <DropdownMenuRadioItem key={template._id} value={template._id}>
-                        {template.name}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setSaveTemplateError(null);
-                      setIsAddTemplateOpen(true);
-                    }}
-                  >
-                    Paste HTML / TSX
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      onClick={() => void handleManualTemplateSave()}
+                      disabled={isSavingTemplate}
+                      className="w-full h-11 rounded-xl bg-foreground text-background font-medium hover:bg-foreground/90 transition-all"
+                    >
+                      {isSavingTemplate ? (
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      ) : null}
+                      {isSavingTemplate
+                        ? "Registering Template..."
+                        : "Save Reference Template"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" className="gap-1.5 px-3">
-                    <Filter className="size-4" />
-                    <span className="text-xs">Category</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuLabel>Email category</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={selectedEmailCategory}
-                    onValueChange={handleCategorySelection}
+              <PromptInputTools>
+                <PromptAddAttachmentButton
+                  selectedTemplateId={selectedTemplateId}
+                  templates={templates}
+                  onSelectTemplate={handleThemeSelection}
+                  selectedEmailCategory={selectedEmailCategory}
+                  onSelectEmailCategory={handleCategorySelection}
+                  activeEmailCategoryLabel={activeEmailCategoryLabel}
+                  onOpenAddTemplate={() => {
+                    setSaveTemplateError(null);
+                    setIsAddTemplateOpen(true);
+                  }}
+                />
+                <div className="h-4 w-px bg-border/40 mx-1" />
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-2 px-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                    >
+                      <Bot className="size-3.5" />
+                      <span className="text-[11px] font-medium tracking-wider">
+                        {activeModelLabel}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-64 rounded-2xl p-1.5 shadow-2xl border-border/40"
                   >
-                    {EMAIL_CATEGORY_OPTIONS.map((option) => (
-                      <DropdownMenuRadioItem key={option.value} value={option.value}>
-                        {option.label}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                    Active: {activeEmailCategoryLabel}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </PromptInputTools>
-            <PromptSubmitButton input={input} status={status} blocked={hasReachedDailyLimit} />
-          </PromptInputFooter>
-        </PromptInput>
+                    <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-widest opacity-50 px-2 py-1.5">
+                      Chat Model
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={selectedModel}
+                      onValueChange={handleModelSelection}
+                      className="space-y-0.5"
+                    >
+                      {CHAT_MODELS.map((model) => (
+                        <DropdownMenuRadioItem
+                          key={model.id}
+                          value={model.id}
+                          className="rounded-xl text-xs font-semibold py-2"
+                        >
+                          {model.label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </PromptInputTools>
+              <PromptSubmitButton
+                input={input}
+                status={status}
+                blocked={hasReachedDailyLimit}
+              />
+            </PromptInputFooter>
+          </PromptInput>
+        </div>
       </div>
     </div>
   );

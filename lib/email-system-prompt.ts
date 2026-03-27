@@ -19,11 +19,21 @@ When asked to create or modify an email template, you MUST call the generate_ema
 
 ## Baseline Structure (always include)
 
-- Html > Head + Preview + Body > Container
-- Container max width around 600px
+- Html > Head + Preview + Body
+- Use full-width outer sections by default.
+- Do not wrap the entire email in a fixed-width outer Container.
+- If you need a readable text column, use an inner content wrapper inside a full-width Section, not a centered page-level 600px shell.
 - Clear content hierarchy: headline, short body, primary CTA
 - Footer with sender identity and unsubscribe/manage-preferences link placeholder
 - Mobile-safe spacing and typography
+
+## Layout Rules
+
+- The outer email canvas should fill the full available preview width.
+- When the user asks for full width or full height, make the hero/primary section span 100% width and use a tall layout that fills the initial viewport area.
+- For full-height hero requests, make the first hero section visually dominant and tall enough to occupy the full initial screen in preview.
+- Avoid large empty gutters around the main hero section in desktop view.
+- Keep mobile responsive behavior, but desktop should not look like a narrow mobile card floating on the left.
 
 ## Conversion-Centered Rules
 

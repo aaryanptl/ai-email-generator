@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { motion } from "motion/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
-import { Eye, Code2, Copy, Check, Download, AlertTriangle, ImagePlus, Link2, Loader2, BookmarkPlus } from "lucide-react";
+import { Eye, Code2, Copy, Check, Download, AlertTriangle, ImagePlus, Link2, Loader2, BookmarkPlus, ArrowLeft, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmailPreview } from "./email-preview";
 import { CodeViewer } from "./code-viewer";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,8 @@ export interface EmailArtifact {
   tsxCode: string;
   htmlCode: string;
 }
+
+type ArtifactTab = "preview" | "code" | "assets";
 
 interface ArtifactPanelProps {
   chatId: string;
@@ -48,11 +50,9 @@ const formatSize = (sizeBytes: number) => {
 function EmailAssetsPanel({
   chatId,
   onEnsureChatPath,
-  compact,
 }: {
   chatId: string;
   onEnsureChatPath?: (chatId: string) => void;
-  compact?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -125,7 +125,7 @@ function EmailAssetsPanel({
   }, []);
 
   return (
-    <div className={cn("h-full", compact ? "px-4 py-3" : "p-4")}>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <input
         ref={fileInputRef}
         type="file"
@@ -140,54 +140,81 @@ function EmailAssetsPanel({
         }}
       />
 
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold">Email assets</p>
-          <p className="text-xs text-muted-foreground">Upload logos, product images, and icons.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-2xl font-semibold tracking-tight">Email Assets</h3>
+          <p className="text-sm text-muted-foreground">Manage your logos, product photography, and icons.</p>
         </div>
         <Button
           type="button"
-          variant="outline"
-          size="sm"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploadingImage}
+          className="h-11 px-6 rounded-2xl bg-foreground text-background hover:bg-foreground/90 font-medium shadow-lg gap-2"
         >
-          {isUploadingImage ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <ImagePlus data-icon="inline-start" />}
-          {isUploadingImage ? "Uploading" : "Upload"}
+          {isUploadingImage ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+          {isUploadingImage ? "Processing..." : "Add New Asset"}
         </Button>
       </div>
 
-      {imageUploadError ? <p className="mb-2 text-xs text-destructive">{imageUploadError}</p> : null}
+      {imageUploadError && (
+        <div className="p-4 rounded-2xl bg-destructive/5 border border-destructive/20 text-destructive text-xs font-semibold flex items-center gap-3">
+          <AlertTriangle className="size-4" />
+          {imageUploadError}
+        </div>
+      )}
 
-      <div className={cn("space-y-2", compact && "max-h-44 overflow-auto")}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {uploadedImages.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/25 px-3 py-3 text-xs text-muted-foreground">
-            No assets yet. Upload an image, copy its link, and tell AI where to place it.
+          <div className="col-span-full py-20 flex flex-col items-center justify-center text-center space-y-4 rounded-3xl border-2 border-dashed border-border/50 bg-muted/20">
+            <div className="size-16 rounded-3xl bg-background flex items-center justify-center shadow-sm">
+              <ImagePlus className="size-6 text-muted-foreground/50" />
+            </div>
+            <div className="space-y-1 px-6">
+              <p className="font-medium">No assets found</p>
+              <p className="text-xs text-muted-foreground max-w-[240px]">
+                Upload your brand assets here to easily reference them in your campaign designs.
+              </p>
+            </div>
           </div>
         ) : (
           uploadedImages.map((image) => (
-            <div key={image.id} className="rounded-xl border border-border/70 bg-card/70 p-2.5">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="grid size-10 place-items-center overflow-hidden rounded-lg border border-border/70 bg-muted/40">
-                  <ImagePlus className="size-4 text-muted-foreground" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">{image.fileName}</p>
-                  <p className="text-[11px] text-muted-foreground">{formatSize(image.sizeBytes)}</p>
+            <motion.div
+              layout
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              key={image.id}
+              className="group relative flex flex-col rounded-3xl border border-border/50 bg-card dark:bg-surface-elevated overflow-hidden hover:shadow-2xl hover:border-foreground/10 transition-all"
+            >
+              <div className="aspect-[4/3] w-full bg-muted/30 relative overflow-hidden flex items-center justify-center">
+                {image.url ? (
+                  <img src={image.url} alt={image.fileName} className="size-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                ) : (
+                  <ImagePlus className="size-8 text-muted-foreground/30" />
+                )}
+                <div className="absolute inset-0 bg-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
+                   <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-9 w-full rounded-xl bg-card font-medium text-foreground shadow-2xl hover:bg-card/90"
+                    onClick={() => void handleCopyUrl(image.id, image.url)}
+                    disabled={!image.url}
+                  >
+                    {copiedImageId === image.id ? <Check className="size-3.5 mr-2" /> : <Link2 className="size-3.5 mr-2" />}
+                    {copiedImageId === image.id ? "Copied Link" : "Copy Asset URL"}
+                  </Button>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-full"
-                onClick={() => void handleCopyUrl(image.id, image.url)}
-                disabled={!image.url}
-              >
-                {copiedImageId === image.id ? <Check data-icon="inline-start" /> : <Link2 data-icon="inline-start" />}
-                {copiedImageId === image.id ? "Copied link" : "Copy link"}
-              </Button>
-            </div>
+              <div className="p-4 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[13px] font-medium">{image.fileName}</p>
+                  <p className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">{formatSize(image.sizeBytes)}</p>
+                </div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium opacity-60">
+                  {image.contentType.split('/')[1] || "Image"}
+                </p>
+              </div>
+            </motion.div>
           ))
         )}
       </div>
@@ -196,12 +223,25 @@ function EmailAssetsPanel({
 }
 
 export function ArtifactPanel({ chatId, email, compilationError, isStreaming, onEnsureChatPath }: ArtifactPanelProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "code" | "assets">("preview");
+  const [activeTab, setActiveTab] = useState<ArtifactTab>("preview");
   const [copiedHtml, setCopiedHtml] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
-  const [templateError, setTemplateError] = useState<string | null>(null);
+  const previousEmailRef = useRef(email);
   const saveTemplate = useMutation(api.emails.saveTemplate);
+
+  useEffect(() => {
+    const hadEmail = Boolean(previousEmailRef.current);
+    const hasEmail = Boolean(email);
+
+    if (!hasEmail) {
+      setActiveTab("preview");
+    } else if (!hadEmail) {
+      setActiveTab("preview");
+    }
+
+    previousEmailRef.current = email;
+  }, [email]);
 
   const handleCopyHtml = async () => {
     if (!email) return;
@@ -226,7 +266,6 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
       return;
     }
 
-    setTemplateError(null);
     setTemplateSaved(false);
     setIsSavingTemplate(true);
 
@@ -241,141 +280,186 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
       setTemplateSaved(true);
       setTimeout(() => setTemplateSaved(false), 2000);
     } catch (error) {
-      setTemplateError(error instanceof Error ? error.message : "Failed to save template");
+      console.error(error instanceof Error ? error.message : "Failed to save template");
     } finally {
       setIsSavingTemplate(false);
     }
   }, [chatId, email, onEnsureChatPath, saveTemplate]);
 
+  const isEmailReady = Boolean(email);
+
   return (
-    <div className="flex h-full min-h-0 bg-background/60">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3 md:px-5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Button
-              onClick={() => setActiveTab("preview")}
-              variant={activeTab === "preview" ? "secondary" : "ghost"}
-              size="sm"
-            >
-              <Eye data-icon="inline-start" />
-              Preview
-            </Button>
-            <Button
-              onClick={() => setActiveTab("code")}
-              variant={activeTab === "code" ? "secondary" : "ghost"}
-              size="sm"
-            >
-              <Code2 data-icon="inline-start" />
-              Code
-            </Button>
-            <Button
-              onClick={() => setActiveTab("assets")}
-              variant={activeTab === "assets" ? "secondary" : "ghost"}
-              size="sm"
-            >
-              <ImagePlus data-icon="inline-start" />
-              Assets
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Button onClick={handleCopyHtml} disabled={!email?.htmlCode} variant="outline" size="sm">
-              {copiedHtml ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-              {copiedHtml ? "Copied" : "Copy HTML"}
-            </Button>
-            <Button
-              onClick={() => void handleSaveTemplate()}
-              disabled={!email?.htmlCode || isSavingTemplate}
-              variant="outline"
-              size="sm"
-            >
-              {isSavingTemplate ? <Loader2 data-icon="inline-start" className="animate-spin" /> : templateSaved ? <Check data-icon="inline-start" /> : <BookmarkPlus data-icon="inline-start" />}
-              {isSavingTemplate ? "Saving" : templateSaved ? "Saved" : "Save Template"}
-            </Button>
-            <Button
-              onClick={handleDownloadHtml}
-              disabled={!email?.htmlCode}
-              variant="outline"
-              size="icon-sm"
-              aria-label="Download HTML"
-            >
-              <Download />
-            </Button>
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface-canvas">
+      {email ? (
+        <div className="z-10 shrink-0 border-b border-border/50 bg-card/80 backdrop-blur-md shadow-sm">
+          <div className="flex items-center gap-3 px-4 py-1.5">
+            <div className="flex w-fit items-center gap-0.5 rounded-xl bg-muted/40 p-1">
+              {[
+                { id: "preview", label: "Visual", icon: Eye },
+                { id: "code", label: "Source", icon: Code2 },
+                { id: "assets", label: "Assets", icon: ImagePlus },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as ArtifactTab)}
+                  className={cn(
+                    "relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                    activeTab === tab.id
+                      ? "text-foreground bg-card dark:bg-surface-elevated shadow-md ring-1 ring-border/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                  )}
+                >
+                  <tab.icon className="size-3.5" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="w-px h-5 bg-border/40 mx-1" />
+
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate text-[12px] font-medium text-muted-foreground opacity-70">
+                {email.name}
+              </h3>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                onClick={handleCopyHtml}
+                disabled={!email.htmlCode}
+                variant="ghost"
+                size="sm"
+                className="h-8 px-3 rounded-xl gap-2 text-[11px] font-medium hover:bg-muted/50"
+              >
+                {copiedHtml ? <Check className="size-3" /> : <Copy className="size-3" />}
+                {copiedHtml ? "Copied" : "Copy"}
+              </Button>
+              <Button
+                onClick={() => void handleSaveTemplate()}
+                disabled={!email.htmlCode || isSavingTemplate}
+                size="sm"
+                className="h-8 px-3 rounded-xl gap-2 bg-foreground text-background hover:bg-foreground/90 text-[11px] font-semibold shadow-lg shadow-foreground/10 active:scale-[0.98] transition-all"
+              >
+                {isSavingTemplate ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : templateSaved ? (
+                  <Check className="size-3" />
+                ) : (
+                  <BookmarkPlus className="size-3" />
+                )}
+                {isSavingTemplate ? "Saving" : templateSaved ? "Saved" : "Save"}
+              </Button>
+              <Button
+                onClick={handleDownloadHtml}
+                disabled={!email.htmlCode}
+                variant="ghost"
+                size="icon-sm"
+                className="size-8 rounded-xl hover:bg-muted/50"
+              >
+                <Download className="size-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
+      ) : null}
 
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {compilationError && !isStreaming && (
-          <div className="flex items-start gap-3 border-b border-amber-700/30 bg-amber-500/10 px-4 py-3 text-amber-700 dark:text-amber-300">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <div>
-              <strong>Compilation Error:</strong> {compilationError}
-              <div className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
-                The generated code had an error. Ask the AI to fix it or regenerate the template.
-              </div>
+          <div className="absolute top-4 left-6 right-6 z-20 flex items-start gap-4 rounded-3xl border border-warning-border bg-warning-muted backdrop-blur-md p-5 text-warning-foreground shadow-2xl animate-in fade-in slide-in-from-top-4">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning-icon" />
+            <div className="text-[12px]">
+              <p className="font-semibold mb-1">Sync Conflict</p>
+              <p className="opacity-80 leading-relaxed font-medium">{compilationError}</p>
             </div>
           </div>
         )}
 
         {isStreaming && (
-          <div className="flex items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="shrink-0">
-              <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeOpacity="0.15" />
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeDasharray="18 32"
-                className="text-foreground"
-              >
-                <animateTransform
-                  attributeName="transform"
-                  type="rotate"
-                  from="0 10 10"
-                  to="360 10 10"
-                  dur="0.9s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-            </svg>
-            <span className="text-sm text-muted-foreground">Generating email template…</span>
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-5 py-2.5 rounded-full bg-foreground text-background shadow-3xl scale-90 animate-pulse border border-border">
+            <Loader2 className="size-3.5 animate-spin" />
+            <span className="text-[10px] font-medium">Synchronizing...</span>
           </div>
         )}
 
-        {templateError ? (
-          <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
-            {templateError}
-          </div>
-        ) : null}
-
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="h-full w-full min-w-0 overflow-hidden">
           {activeTab === "assets" ? (
-            <EmailAssetsPanel chatId={chatId} onEnsureChatPath={onEnsureChatPath} />
-          ) : !email ? (
-            <div className="grid h-full place-items-center px-6">
-              <Card className="w-full max-w-md border-border/70 bg-card/85 text-center backdrop-blur">
-                <CardHeader className="items-center gap-3">
-                  <div className="mx-auto grid size-16 place-items-center rounded-2xl border border-border/70 bg-muted/50">
-                    <Eye className="size-7 text-muted-foreground" />
+            <div className="h-full overflow-auto custom-scrollbar">
+              {!isEmailReady ? (
+                <div className="sticky top-0 z-10 border-b border-border/50 bg-card/85 px-6 py-4 backdrop-blur-md dark:bg-card/60">
+                  <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/70">
+                        Asset Vault
+                      </p>
+                      <h3 className="text-lg font-semibold tracking-tight">Brand ingredients for the next campaign</h3>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 rounded-xl px-3 text-[11px] font-medium"
+                      onClick={() => setActiveTab("preview")}
+                    >
+                      <ArrowLeft className="size-3.5" />
+                      Back
+                    </Button>
                   </div>
-                  <CardTitle>Email preview</CardTitle>
-                  <CardDescription>
-                    Generated templates appear here with live rendering and source code.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+                </div>
+              ) : null}
+              <div className="p-8 max-w-5xl mx-auto h-full">
+                <EmailAssetsPanel chatId={chatId} onEnsureChatPath={onEnsureChatPath} />
+              </div>
+            </div>
+          ) : !email ? (
+            <div className="relative flex h-full flex-col overflow-hidden px-5 py-8 sm:px-8">
+              <div className="absolute inset-0 bg-muted/30 dark:bg-background" />
+              <div className="relative mx-auto flex w-full max-w-md flex-1 flex-col justify-center">
+                <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Preview
+                </p>
+                <div className="rounded-2xl border border-border bg-card px-6 py-8 shadow-sm">
+                  <div className="mb-5 flex justify-center">
+                    <div className="flex size-12 items-center justify-center rounded-xl border border-border bg-muted/40">
+                      <Eye className="size-5 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <h3 className="text-center text-xl font-semibold tracking-tight text-foreground">
+                    Nothing to preview yet
+                  </h3>
+                  <p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
+                    Chat on the left to generate an email, or open the asset
+                    vault to add brand files first.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setActiveTab("assets")}
+                    className="mt-6 h-10 w-full rounded-xl text-sm font-medium"
+                  >
+                    <FolderOpen className="size-4" />
+                    Open asset vault
+                  </Button>
+                </div>
+                <p className="mt-5 text-center text-xs text-muted-foreground">
+                  Example: &quot;Product launch email with hero image and strong
+                  CTA.&quot;
+                </p>
+              </div>
             </div>
           ) : activeTab === "preview" ? (
-            email.htmlCode ? (
-              <EmailPreview htmlCode={email.htmlCode} />
-            ) : (
-              <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground">
-                No preview available. Check the Code tab for the generated source.
-              </div>
-            )
+            <div className="flex h-full w-full flex-col overflow-hidden bg-card">
+              {email.htmlCode ? (
+                <EmailPreview htmlCode={email.htmlCode} />
+              ) : (
+                <div className="flex h-full items-center justify-center p-16 text-center text-[12px] font-medium text-muted-foreground animate-pulse">
+                  Initializing Preview...
+                </div>
+              )}
+            </div>
           ) : (
-            <CodeViewer code={email.tsxCode} />
+            <div className="h-full overflow-hidden bg-surface-code">
+              <CodeViewer code={email.tsxCode} />
+            </div>
           )}
         </div>
       </div>

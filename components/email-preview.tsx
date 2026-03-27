@@ -8,8 +8,96 @@ interface EmailPreviewProps {
   htmlCode: string;
 }
 
+const expandDesktopPreviewHtml = (htmlCode: string) =>
+  htmlCode
+    .replace(
+      /<(table|div|td)([^>]*?)style="([^"]*)"([^>]*)>/gi,
+      (_match, tag: string, before: string, style: string, after: string) => {
+        let nextStyle = style;
+
+        if (/max-width\s*:/i.test(nextStyle)) {
+          nextStyle = nextStyle.replace(/max-width\s*:\s*[^;"]+;?/gi, "max-width:100%;");
+        }
+
+        if (/width\s*:\s*\d+px/i.test(nextStyle)) {
+          nextStyle = nextStyle.replace(/width\s*:\s*\d+px;?/gi, "width:100%;");
+        }
+
+        if (/margin\s*:\s*0\s+auto/i.test(nextStyle)) {
+          nextStyle = nextStyle.replace(/margin\s*:\s*0\s+auto;?/gi, "margin:0;");
+        }
+
+        return `<${tag}${before}style="${nextStyle}"${after}>`;
+      },
+    )
+    .replace(/<(table|td|div)([^>]*?)\swidth="(\d+%?|\d+px|\d+)"([^>]*)>/gi, "<$1$2 width=\"100%\"$4>");
+
+const getPreviewHtml = (htmlCode: string, isMobile: boolean) => {
+  const previewMarkup = isMobile ? htmlCode : expandDesktopPreviewHtml(htmlCode);
+  const desktopExpansion = isMobile
+    ? ""
+    : `
+      body > div,
+      body > table,
+      body > center,
+      body > center > table,
+      body > center > div,
+      table[align="center"],
+      [style*="max-width"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+      }
+      body > div,
+      body > table,
+      body > center,
+      body > center > table,
+      body > center > div {
+        min-height: 100vh !important;
+      }
+      body > div:first-child,
+      body > table:first-child,
+      body > center:first-child,
+      body > center > div:first-child,
+      body > center > table:first-child,
+      body > div:first-child > table:first-child,
+      body > table:first-child > tbody > tr:first-child > td:first-child,
+      body > center > table:first-child > tbody > tr:first-child > td:first-child {
+        min-height: 100vh !important;
+        height: 100vh !important;
+      }
+    `;
+
+  const previewReset = `
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100%;
+        overflow: auto;
+      }
+      body {
+        box-sizing: border-box;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      ${desktopExpansion}
+    </style>
+  `;
+
+  if (previewMarkup.includes("</head>")) {
+    return previewMarkup.replace("</head>", `${previewReset}</head>`);
+  }
+
+  return `${previewReset}${previewMarkup}`;
+};
+
 export function EmailPreview({ htmlCode }: EmailPreviewProps) {
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
+  const isMobile = viewMode === "mobile";
 
   return (
     <div className="flex h-full flex-col">
@@ -31,13 +119,21 @@ export function EmailPreview({ htmlCode }: EmailPreviewProps) {
           Mobile
         </Button>
       </div>
-      <div className="flex flex-1 justify-center overflow-auto bg-muted/35 p-4 md:p-6">
+      <div
+        className={`flex flex-1 overflow-auto bg-muted/35 ${
+          isMobile ? "justify-center" : "justify-stretch"
+        }`}
+      >
         <iframe
-          srcDoc={htmlCode}
+          srcDoc={getPreviewHtml(htmlCode, isMobile)}
           title="Email Preview"
           sandbox="allow-same-origin"
-          className="h-full rounded-xl border border-border bg-white shadow-sm"
-          style={{ width: viewMode === "desktop" ? "100%" : "375px", maxWidth: "680px" }}
+          className="h-full min-h-0 border-0 bg-white"
+          style={{
+            width: isMobile ? "375px" : "100%",
+            maxWidth: isMobile ? "375px" : "100%",
+            minHeight: "100%",
+          }}
         />
       </div>
     </div>

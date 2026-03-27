@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import type { UIMessage } from "ai";
+import { PanelLeftOpen } from "lucide-react";
 import { ChatPanel, EmailData } from "@/components/chat-panel";
 import { ArtifactPanel, EmailArtifact } from "@/components/artifact-panel";
 import { HistorySidebar, type HistoryChat } from "@/components/history-sidebar";
@@ -174,7 +175,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
     const update = () => {
       setIsDesktop(mediaQuery.matches);
     };
@@ -218,7 +219,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
+    <div className="relative flex h-screen min-w-0 overflow-hidden bg-surface-app">
       <HistorySidebar
         open={mobileHistoryOpen}
         onClose={() => setMobileHistoryOpen(false)}
@@ -230,13 +231,19 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
         userName={session.user.name ?? undefined}
         userImage={session.user.image ?? null}
         onSignOut={() => void handleSignOut()}
+        onNewChat={handleNewChat}
       />
 
       {isDesktop ? (
-        <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+        <ResizablePanelGroup orientation="horizontal" className="h-full w-full min-w-0">
           {historyDockedOpen ? (
             <>
-              <ResizablePanel defaultSize="22%" minSize={240} maxSize={420} className="min-w-[240px]">
+              <ResizablePanel
+                defaultSize="20%"
+                minSize="18%"
+                maxSize="30%"
+                className="min-w-[280px]"
+              >
                 <HistorySidebar
                   variant="docked"
                   chats={historyChats}
@@ -247,17 +254,18 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
                   userName={session.user.name ?? undefined}
                   userImage={session.user.image ?? null}
                   onSignOut={() => void handleSignOut()}
+                  onNewChat={handleNewChat}
                 />
               </ResizablePanel>
-              <ResizableHandle withHandle />
+              <ResizableHandle className="w-0.5 bg-border/20 hover:bg-foreground/10 transition-colors" />
             </>
           ) : null}
 
           <ResizablePanel
-            defaultSize={historyDockedOpen ? "31%" : "38%"}
-            minSize={320}
-            maxSize="48%"
-            className="min-w-[320px]"
+            defaultSize={historyDockedOpen ? "35%" : "40%"}
+            minSize="30%"
+            maxSize="50%"
+            className="min-w-[420px] bg-card"
           >
             <ChatPanel
               key={chatId}
@@ -265,16 +273,19 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
               initialMessages={chatInitialMessages}
               onEmailGenerated={handleEmailGenerated}
               onEnsureChatPath={handleEnsureChatPath}
-              onToggleSidebar={handleToggleHistory}
-              onNewChat={handleNewChat}
               onStatusChange={setIsChatStreaming}
             />
           </ResizablePanel>
 
-          <ResizableHandle withHandle />
+          <ResizableHandle className="w-0.5 bg-border/20 hover:bg-foreground/10 transition-colors" />
 
-          <ResizablePanel defaultSize={historyDockedOpen ? "47%" : "62%"} minSize={360} className="min-w-[360px]">
+          <ResizablePanel
+            defaultSize={historyDockedOpen ? "45%" : "60%"}
+            minSize="40%"
+            className="min-w-[520px] bg-surface-canvas"
+          >
             <ArtifactPanel
+              key={chatId}
               chatId={chatId}
               email={currentEmail}
               compilationError={compilationError}
@@ -285,18 +296,28 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
         </ResizablePanelGroup>
       ) : (
         <>
-          <div className="fixed inset-x-3 top-3 z-30 flex rounded-4xl border border-border/70 bg-card/95 p-1 shadow-sm backdrop-blur">
+          <div className="fixed inset-x-3 top-3 z-30 flex items-center gap-1 rounded-4xl border border-border/70 bg-card/95 p-1 shadow-sm backdrop-blur">
+            <Button
+              type="button"
+              onClick={handleToggleHistory}
+              variant="ghost"
+              size="icon"
+              className="size-9 shrink-0 rounded-3xl"
+              aria-label="Open history"
+            >
+              <PanelLeftOpen className="size-4" />
+            </Button>
             <Button
               onClick={() => setActivePanel("chat")}
               variant={activePanel === "chat" ? "secondary" : "ghost"}
-              className="flex-1"
+              className="min-w-0 flex-1"
             >
               Chat
             </Button>
             <Button
               onClick={() => setActivePanel("preview")}
               variant={activePanel === "preview" ? "secondary" : "ghost"}
-              className="flex-1"
+              className="min-w-0 flex-1"
             >
               Preview
             </Button>
@@ -304,7 +325,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
 
           <div
             className={cn(
-              "h-full w-full shrink-0 border-r border-border/60 pt-16",
+              "h-full w-full shrink-0 min-w-0 border-r border-border/60 pt-16",
               activePanel !== "chat" && "hidden",
             )}
             data-active={activePanel === "chat"}
@@ -315,8 +336,6 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
               initialMessages={chatInitialMessages}
               onEmailGenerated={handleEmailGenerated}
               onEnsureChatPath={handleEnsureChatPath}
-              onToggleSidebar={handleToggleHistory}
-              onNewChat={handleNewChat}
               onStatusChange={setIsChatStreaming}
             />
           </div>
@@ -326,6 +345,7 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
             data-active={activePanel === "preview"}
           >
             <ArtifactPanel
+              key={chatId}
               chatId={chatId}
               email={currentEmail}
               compilationError={compilationError}

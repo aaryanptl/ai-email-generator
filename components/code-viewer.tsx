@@ -32,6 +32,7 @@ export function CodeViewer({ code, language = "tsx" }: CodeViewerProps) {
               ...style,
               margin: 0,
               padding: "18px 16px 16px",
+              fontFamily: "var(--font-mono)",
               fontSize: "13px",
               lineHeight: "1.6",
               height: "100%",
@@ -47,7 +48,7 @@ export function CodeViewer({ code, language = "tsx" }: CodeViewerProps) {
                     width: "3em",
                     textAlign: "right",
                     paddingRight: "1em",
-                    color: "#95a0b5",
+                    color: "var(--code-gutter)",
                     userSelect: "none",
                   }}
                 >
