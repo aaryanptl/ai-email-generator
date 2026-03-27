@@ -442,9 +442,66 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
         )}
 
         {isStreaming && (
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-5 py-2.5 rounded-full bg-foreground text-background shadow-3xl scale-90 animate-pulse border border-border">
-            <Loader2 className="size-3.5 animate-spin" />
-            <span className="text-[10px] font-medium">Synchronizing...</span>
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-background/60 backdrop-blur-md animate-in fade-in duration-500">
+            {/* Chaotic/crazy scanning lines */}
+            <motion.div 
+              className="absolute left-0 right-0 h-1 bg-primary/30 shadow-[0_0_40px_10px_hsl(var(--primary))]"
+              animate={{ top: ["-10%", "110%", "-10%"] }}
+              transition={{ duration: 4, ease: "linear", repeat: Infinity }}
+            />
+            <motion.div 
+              className="absolute left-0 right-0 h-[1px] bg-primary/60"
+              animate={{ top: ["-10%", "110%", "-10%"] }}
+              transition={{ duration: 4, ease: "linear", repeat: Infinity }}
+            />
+
+            {/* Core rotating elements */}
+            <div className="relative flex size-40 items-center justify-center">
+              {/* Outer dashed ring */}
+              <motion.div 
+                className="absolute inset-0 rounded-full border border-dashed border-primary/50"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 8, ease: "linear", repeat: Infinity }}
+              />
+              {/* Offset spinning rings */}
+              <motion.div 
+                className="absolute inset-2 rounded-full border-2 border-transparent border-t-primary/80 border-r-primary/80"
+                animate={{ rotate: -360 }}
+                transition={{ duration: 3, ease: "linear", repeat: Infinity }}
+              />
+              <motion.div 
+                className="absolute inset-5 rounded-full border-2 border-transparent border-b-primary border-l-primary"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, ease: "linear", repeat: Infinity }}
+              />
+              <motion.div 
+                className="absolute inset-8 rounded-full border border-primary/40"
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, ease: "easeInOut", repeat: Infinity }}
+              />
+              
+              {/* Central glowing orb */}
+              <div className="absolute inset-10 rounded-full bg-primary/20 blur-md animate-pulse" />
+              <div className="relative flex size-12 items-center justify-center rounded-full bg-card border border-primary/50 shadow-[0_0_30px_hsl(var(--primary))]">
+                <Loader2 className="size-6 text-primary animate-spin" />
+              </div>
+            </div>
+            
+            <div className="mt-10 flex flex-col items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="text-sm font-bold tracking-[0.3em] text-foreground uppercase">
+                  Synchronizing
+                </span>
+                <span className="flex gap-1 ml-1">
+                  <motion.span animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.5, repeat: Infinity, delay: 0 }} className="size-1.5 bg-primary rounded-full" />
+                  <motion.span animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.5, repeat: Infinity, delay: 0.2 }} className="size-1.5 bg-primary rounded-full" />
+                  <motion.span animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.5, repeat: Infinity, delay: 0.4 }} className="size-1.5 bg-primary rounded-full" />
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground/80 font-medium tracking-wide">
+                Compiling TSX & Render Context
+              </p>
+            </div>
           </div>
         )}
 
