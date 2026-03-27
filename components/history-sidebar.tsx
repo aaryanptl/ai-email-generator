@@ -40,45 +40,6 @@ interface HistorySidebarProps {
   variant?: "drawer" | "docked";
 }
 
-/** Full class strings per row so Tailwind picks up chart-* utilities. */
-const HISTORY_ROW_ACCENTS = [
-  {
-    iconBox: "bg-chart-1/28 text-chart-1 dark:bg-chart-1/32",
-    iconHover: "group-hover:bg-chart-1/40 dark:group-hover:bg-chart-1/45",
-    row: "border-chart-1/30 bg-linear-to-br from-chart-1/16 via-card to-card dark:from-chart-1/20 dark:via-card/75 dark:to-card/55",
-    rowHover: "hover:border-chart-1/50 hover:shadow-md",
-    ringHover: "hover:ring-2 hover:ring-chart-1/25",
-  },
-  {
-    iconBox: "bg-chart-2/28 text-chart-2 dark:bg-chart-2/32",
-    iconHover: "group-hover:bg-chart-2/40 dark:group-hover:bg-chart-2/45",
-    row: "border-chart-2/30 bg-linear-to-br from-chart-2/16 via-card to-card dark:from-chart-2/20 dark:via-card/75 dark:to-card/55",
-    rowHover: "hover:border-chart-2/50 hover:shadow-md",
-    ringHover: "hover:ring-2 hover:ring-chart-2/25",
-  },
-  {
-    iconBox: "bg-chart-3/28 text-chart-3 dark:bg-chart-3/32",
-    iconHover: "group-hover:bg-chart-3/40 dark:group-hover:bg-chart-3/45",
-    row: "border-chart-3/30 bg-linear-to-br from-chart-3/16 via-card to-card dark:from-chart-3/20 dark:via-card/75 dark:to-card/55",
-    rowHover: "hover:border-chart-3/50 hover:shadow-md",
-    ringHover: "hover:ring-2 hover:ring-chart-3/25",
-  },
-  {
-    iconBox: "bg-chart-4/28 text-chart-4 dark:bg-chart-4/32",
-    iconHover: "group-hover:bg-chart-4/40 dark:group-hover:bg-chart-4/45",
-    row: "border-chart-4/30 bg-linear-to-br from-chart-4/16 via-card to-card dark:from-chart-4/20 dark:via-card/75 dark:to-card/55",
-    rowHover: "hover:border-chart-4/50 hover:shadow-md",
-    ringHover: "hover:ring-2 hover:ring-chart-4/25",
-  },
-  {
-    iconBox: "bg-chart-5/28 text-chart-5 dark:bg-chart-5/32",
-    iconHover: "group-hover:bg-chart-5/40 dark:group-hover:bg-chart-5/45",
-    row: "border-chart-5/30 bg-linear-to-br from-chart-5/16 via-card to-card dark:from-chart-5/20 dark:via-card/75 dark:to-card/55",
-    rowHover: "hover:border-chart-5/50 hover:shadow-md",
-    ringHover: "hover:ring-2 hover:ring-chart-5/25",
-  },
-] as const;
-
 export function HistorySidebar({
   open,
   onClose,
@@ -185,9 +146,8 @@ export function HistorySidebar({
           </div>
         ) : (
           <ul className="flex list-none flex-col gap-2 pb-2">
-            {filteredChats.map((chat, rowIndex) => {
+            {filteredChats.map((chat) => {
               const isActive = activeChatId === chat.chatId;
-              const tone = HISTORY_ROW_ACCENTS[rowIndex % HISTORY_ROW_ACCENTS.length];
               return (
                 <li key={chat.chatId}>
                   <div
@@ -202,8 +162,8 @@ export function HistorySidebar({
                     className={cn(
                       "group relative flex cursor-pointer items-center gap-3 rounded-xl border px-2.5 py-2.5 transition-all duration-200",
                       isActive
-                        ? "border-primary/45 bg-gradient-to-br from-primary/[0.2] via-primary/[0.08] to-card shadow-md ring-2 ring-primary/25 dark:from-primary/25 dark:via-primary/12 dark:to-card/70"
-                        : cn(tone.row, tone.rowHover, tone.ringHover, "ring-offset-1 ring-offset-sidebar dark:ring-offset-sidebar"),
+                        ? "border-primary/45 bg-gradient-to-br from-primary/[0.12] via-primary/[0.05] to-transparent shadow-md ring-2 ring-primary/25 dark:from-primary/25 dark:via-primary/12 dark:to-transparent"
+                        : "border-border/50 bg-card hover:border-border/80 hover:bg-muted/50 hover:shadow-sm ring-offset-1 ring-offset-sidebar dark:ring-offset-sidebar",
                     )}
                     onClick={() => onSelectChat(chat.chatId)}
                   >
@@ -211,8 +171,8 @@ export function HistorySidebar({
                       className={cn(
                         "flex size-9 shrink-0 items-center justify-center rounded-xl shadow-inner transition-all duration-200",
                         isActive
-                          ? "bg-primary/30 text-primary shadow-sm ring-1 ring-primary/30 dark:bg-primary/35"
-                          : cn(tone.iconBox, tone.iconHover),
+                          ? "bg-primary/20 text-primary shadow-sm ring-1 ring-primary/30 dark:bg-primary/35"
+                          : "bg-muted/60 text-muted-foreground group-hover:bg-muted group-hover:text-foreground",
                       )}
                       aria-hidden
                     >
