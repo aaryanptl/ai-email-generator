@@ -174,14 +174,11 @@
     1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 8px 10px 0px hsl(0 0% 0% / 0.06);
   --shadow-2xl: 1px 2px 5px 1px hsl(0 0% 0% / 0.15);
   --shadow-premium:
-    0 4px 24px -6px oklch(0 0 0 / 0.35),
-    0 1px 2px oklch(0 0 0 / 0.2);
+    0 4px 24px -6px oklch(0 0 0 / 0.35), 0 1px 2px oklch(0 0 0 / 0.2);
   --shadow-premium-reverse:
-    0 -4px 24px -6px oklch(0 0 0 / 0.35),
-    0 -1px 2px oklch(0 0 0 / 0.2);
+    0 -4px 24px -6px oklch(0 0 0 / 0.35), 0 -1px 2px oklch(0 0 0 / 0.2);
   --shadow-3xl:
-    0 24px 48px -12px oklch(0 0 0 / 0.55),
-    0 12px 24px -8px oklch(0 0 0 / 0.35);
+    0 24px 48px -12px oklch(0 0 0 / 0.55), 0 12px 24px -8px oklch(0 0 0 / 0.35);
 }
 
 @theme inline {
@@ -284,4 +281,9 @@
       linear-gradient(90deg, var(--pattern-grid-line) 1px, transparent 1px);
     background-size: 32px 32px;
   }
+}
+
+*::-webkit-scrollbar {
+  width: 0px;
+  display: none;
 }

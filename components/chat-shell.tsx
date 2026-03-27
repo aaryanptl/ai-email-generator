@@ -9,8 +9,18 @@ import { ChatPanel, EmailData } from "@/components/chat-panel";
 import { ArtifactPanel, EmailArtifact } from "@/components/artifact-panel";
 import { HistorySidebar, type HistoryChat } from "@/components/history-sidebar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -20,7 +30,10 @@ interface ChatShellProps {
   initialMessages?: UIMessage[];
 }
 
-export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProps) {
+export function ChatShell({
+  initialChatId,
+  initialMessages = [],
+}: ChatShellProps) {
   const router = useRouter();
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
@@ -29,7 +42,9 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
   }, [initialChatId]);
 
   const [chatId, setChatId] = useState(bootChatId);
-  const [hasPersistedPath, setHasPersistedPath] = useState(Boolean(initialChatId));
+  const [hasPersistedPath, setHasPersistedPath] = useState(
+    Boolean(initialChatId),
+  );
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [historyDockedOpen, setHistoryDockedOpen] = useState(true);
   const [previewEmail, setPreviewEmail] = useState<EmailArtifact | null>(null);
@@ -51,11 +66,13 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
     if (!chats) {
       return [];
     }
-    return chats.map((chat: { chatId: string; title: string; updatedAt: number }) => ({
-      chatId: chat.chatId,
-      title: chat.title,
-      updatedAt: chat.updatedAt,
-    }));
+    return chats.map(
+      (chat: { chatId: string; title: string; updatedAt: number }) => ({
+        chatId: chat.chatId,
+        title: chat.title,
+        updatedAt: chat.updatedAt,
+      }),
+    );
   }, [chats]);
 
   const chatInitialMessages = useMemo<UIMessage[]>(() => {
@@ -108,13 +125,16 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
     router.replace("/chat");
   }, [router]);
 
-  const handleEnsureChatPath = useCallback((nextChatId: string) => {
-    if (!hasPersistedPath) {
-      setChatId(nextChatId);
-      window.history.replaceState({}, "", `/chat/${nextChatId}`);
-      setHasPersistedPath(true);
-    }
-  }, [hasPersistedPath]);
+  const handleEnsureChatPath = useCallback(
+    (nextChatId: string) => {
+      if (!hasPersistedPath) {
+        setChatId(nextChatId);
+        window.history.replaceState({}, "", `/chat/${nextChatId}`);
+        setHasPersistedPath(true);
+      }
+    },
+    [hasPersistedPath],
+  );
 
   const handleEmailGenerated = useCallback((data: EmailData) => {
     if (!data.success) {
@@ -141,18 +161,24 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
     setActivePanel("preview");
   }, []);
 
-  const handleSelectChat = useCallback((selectedChatId: string) => {
-    setMobileHistoryOpen(false);
-    router.push(`/chat/${selectedChatId}`);
-  }, [router]);
+  const handleSelectChat = useCallback(
+    (selectedChatId: string) => {
+      setMobileHistoryOpen(false);
+      router.push(`/chat/${selectedChatId}`);
+    },
+    [router],
+  );
 
-  const handleDeleteChat = useCallback(async (selectedChatId: string) => {
-    await deleteChat({ chatId: selectedChatId });
-    if (selectedChatId === chatId) {
-      setPreviewEmail(null);
-      router.replace("/chat");
-    }
-  }, [chatId, deleteChat, router]);
+  const handleDeleteChat = useCallback(
+    async (selectedChatId: string) => {
+      await deleteChat({ chatId: selectedChatId });
+      if (selectedChatId === chatId) {
+        setPreviewEmail(null);
+        router.replace("/chat");
+      }
+    },
+    [chatId, deleteChat, router],
+  );
 
   const handleNewChat = useCallback(() => {
     setMobileHistoryOpen(false);
@@ -191,7 +217,9 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
         <Card className="w-full max-w-sm border-border/70 bg-card/80 backdrop-blur">
           <CardHeader>
             <CardTitle>Checking session</CardTitle>
-            <CardDescription>Please wait while we authenticate your account.</CardDescription>
+            <CardDescription>
+              Please wait while we authenticate your account.
+            </CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -205,7 +233,8 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
           <CardHeader className="space-y-3">
             <CardTitle className="text-2xl">Sign in to continue</CardTitle>
             <CardDescription>
-              Use Google to access your saved chats and generated email templates.
+              Use Google to access your saved chats and generated email
+              templates.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -235,7 +264,10 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
       />
 
       {isDesktop ? (
-        <ResizablePanelGroup orientation="horizontal" className="h-full w-full min-w-0">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="h-full w-full min-w-0"
+        >
           {historyDockedOpen ? (
             <>
               <ResizablePanel
@@ -341,7 +373,10 @@ export function ChatShell({ initialChatId, initialMessages = [] }: ChatShellProp
           </div>
 
           <div
-            className={cn("min-w-0 flex-1 pt-16", activePanel !== "preview" && "hidden")}
+            className={cn(
+              "min-w-0 flex-1 pt-16",
+              activePanel !== "preview" && "hidden",
+            )}
             data-active={activePanel === "preview"}
           >
             <ArtifactPanel

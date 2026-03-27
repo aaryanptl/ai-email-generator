@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "motion/react";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -45,6 +45,46 @@ const formatSize = (sizeBytes: number) => {
     return `${Math.round(sizeBytes / 1024)} KB`;
   }
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const formatHtmlForDisplay = (html: string) => {
+  const normalized = html
+    .replace(/></g, ">\n<")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const lines = normalized.split("\n");
+  let indentLevel = 0;
+
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        return "";
+      }
+
+      const isClosingTag = /^<\/[^>]+>/.test(trimmed);
+      const isComment = /^<!--/.test(trimmed);
+      const isDoctype = /^<!DOCTYPE/i.test(trimmed);
+      const isOpeningTag =
+        /^<[^!/][^>]*[^/]>$/.test(trimmed) &&
+        !/^<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b/i.test(trimmed) &&
+        !trimmed.includes("</");
+
+      if (isClosingTag) {
+        indentLevel = Math.max(indentLevel - 1, 0);
+      }
+
+      const formattedLine = `${"  ".repeat(indentLevel)}${trimmed}`;
+
+      if (isOpeningTag && !isComment && !isDoctype) {
+        indentLevel += 1;
+      }
+
+      return formattedLine;
+    })
+    .join("\n");
 };
 
 function EmailAssetsPanel({
@@ -224,6 +264,7 @@ function EmailAssetsPanel({
 
 export function ArtifactPanel({ chatId, email, compilationError, isStreaming, onEnsureChatPath }: ArtifactPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactTab>("preview");
+  const [activeSourceTab, setActiveSourceTab] = useState<"html" | "tsx">("html");
   const [copiedHtml, setCopiedHtml] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
@@ -241,6 +282,22 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
     }
 
     previousEmailRef.current = email;
+  }, [email]);
+
+  useEffect(() => {
+    if (!email) {
+      setActiveSourceTab("html");
+      return;
+    }
+
+    if (email.htmlCode) {
+      setActiveSourceTab("html");
+      return;
+    }
+
+    if (email.tsxCode) {
+      setActiveSourceTab("tsx");
+    }
   }, [email]);
 
   const handleCopyHtml = async () => {
@@ -287,6 +344,16 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
   }, [chatId, email, onEnsureChatPath, saveTemplate]);
 
   const isEmailReady = Boolean(email);
+  const hasHtmlSource = Boolean(email?.htmlCode);
+  const hasTsxSource = Boolean(email?.tsxCode);
+  const formattedHtmlCode = useMemo(
+    () => (email?.htmlCode ? formatHtmlForDisplay(email.htmlCode) : ""),
+    [email?.htmlCode],
+  );
+  const sourceCode = activeSourceTab === "html" ? formattedHtmlCode : email?.tsxCode ?? "";
+  const sourceCopyCode = activeSourceTab === "html" ? email?.htmlCode ?? "" : email?.tsxCode ?? "";
+  const sourceLanguage = activeSourceTab === "html" ? "markup" : "tsx";
+  const sourceCopyLabel = activeSourceTab === "html" ? "Copy HTML" : "Copy React";
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface-canvas">
@@ -457,8 +524,45 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
               )}
             </div>
           ) : (
-            <div className="h-full overflow-hidden bg-surface-code">
-              <CodeViewer code={email.tsxCode} />
+            <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-code">
+              {(hasHtmlSource || hasTsxSource) ? (
+                <>
+                  {(hasHtmlSource && hasTsxSource) ? (
+                    <div className="flex shrink-0 items-center gap-2 border-b border-white/8 bg-slate-950/40 px-4 py-3">
+                      {[
+                        { id: "html", label: "HTML Output" },
+                        { id: "tsx", label: "React Source" },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveSourceTab(tab.id as "html" | "tsx")}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition",
+                            activeSourceTab === tab.id
+                              ? "border-white/18 bg-white text-slate-950 shadow-sm"
+                              : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white",
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="min-h-0 flex-1">
+                    <CodeViewer
+                      code={sourceCode}
+                      copyCode={sourceCopyCode}
+                      language={sourceLanguage}
+                      copyLabel={sourceCopyLabel}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center p-16 text-center text-[12px] font-medium text-slate-300/70">
+                  Source code is not available for this email yet.
+                </div>
+              )}
             </div>
           )}
         </div>

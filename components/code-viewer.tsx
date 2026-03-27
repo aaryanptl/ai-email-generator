@@ -8,22 +8,38 @@ import { Button } from "@/components/ui/button";
 interface CodeViewerProps {
   code: string;
   language?: string;
+  copyLabel?: string;
+  copyCode?: string;
 }
 
-export function CodeViewer({ code, language = "tsx" }: CodeViewerProps) {
+export function CodeViewer({
+  code,
+  language = "tsx",
+  copyLabel = "Copy Code",
+  copyCode,
+}: CodeViewerProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
+    await navigator.clipboard.writeText(copyCode ?? code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="relative h-full overflow-auto">
-      <Button onClick={handleCopy} variant="outline" size="sm" className="absolute right-3 top-3 z-10">
-        {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-        {copied ? "Copied!" : "Copy Code"}
+      <Button
+        onClick={handleCopy}
+        variant="ghost"
+        size="sm"
+        className="absolute right-4 top-4 z-10 h-9 rounded-full border border-white/16 bg-slate-800/88 px-3.5 text-[11px] font-semibold text-slate-100 shadow-lg shadow-black/25 backdrop-blur-md transition hover:bg-slate-700/92 hover:text-white"
+      >
+        {copied ? (
+          <Check data-icon="inline-start" className="size-3.5 text-emerald-300" />
+        ) : (
+          <Copy data-icon="inline-start" className="size-3.5 text-slate-200" />
+        )}
+        {copied ? "Copied!" : copyLabel}
       </Button>
       <Highlight theme={themes.nightOwl} code={code.trim()} language={language}>
         {({ style, tokens, getLineProps, getTokenProps }) => (
