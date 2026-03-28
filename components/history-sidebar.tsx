@@ -5,13 +5,16 @@ import {
 	LogOut,
 	Mail,
 	MessageSquare,
+	Moon,
 	Plus,
+	Sun,
 	Search,
 	Trash2,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PromptUsageRing } from "@/components/prompt-usage-ring";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
@@ -56,6 +59,13 @@ export function HistorySidebar({
 	const accountMenuRef = useRef<HTMLDivElement>(null);
 	const [searchQuery, setSearchQuery] = useState("");
 	const dailyPromptStatus = useQuery(api.usage.getDailyPromptStatus, {});
+	const { resolvedTheme, setTheme } = useTheme();
+	const themeMounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
+	const isDarkTheme = themeMounted && resolvedTheme === "dark";
 
 	useEffect(() => {
 		if (!accountMenuOpen) {
@@ -269,6 +279,19 @@ export function HistorySidebar({
 											) : null}
 										</div>
 									</div>
+									<div className="h-px bg-border/50 my-1 mx-2" />
+									<button
+										type="button"
+										onClick={() => setTheme(isDarkTheme ? "light" : "dark")}
+										className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[12px] transition-all hover:bg-muted text-foreground font-semibold"
+									>
+										{isDarkTheme ? (
+											<Sun className="size-3.5" />
+										) : (
+											<Moon className="size-3.5" />
+										)}
+										{isDarkTheme ? "Light mode" : "Dark mode"}
+									</button>
 									<div className="h-px bg-border/50 my-1 mx-2" />
 									<button
 										type="button"
