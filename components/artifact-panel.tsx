@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { motion } from "motion/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
-import { Eye, Code2, Copy, Check, Download, AlertTriangle, ImagePlus, Link2, Loader2, BookmarkPlus, ArrowLeft, FolderOpen } from "lucide-react";
+import { Eye, Code2, Copy, Check, Download, AlertTriangle, ImagePlus, Link2, Loader2, ArrowLeft, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmailPreview } from "./email-preview";
 import { CodeViewer } from "./code-viewer";
@@ -266,10 +266,7 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
   const [activeTab, setActiveTab] = useState<ArtifactTab>("preview");
   const [activeSourceTab, setActiveSourceTab] = useState<"html" | "tsx">("html");
   const [copiedHtml, setCopiedHtml] = useState(false);
-  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
-  const [templateSaved, setTemplateSaved] = useState(false);
   const previousEmailRef = useRef(email);
-  const saveTemplate = useMutation(api.emails.saveTemplate);
 
   useEffect(() => {
     const hadEmail = Boolean(previousEmailRef.current);
@@ -317,31 +314,6 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  const handleSaveTemplate = useCallback(async () => {
-    if (!email) {
-      return;
-    }
-
-    setTemplateSaved(false);
-    setIsSavingTemplate(true);
-
-    try {
-      onEnsureChatPath?.(chatId);
-      await saveTemplate({
-        name: email.name,
-        description: email.description,
-        htmlCode: email.htmlCode,
-        tsxCode: email.tsxCode || undefined,
-      });
-      setTemplateSaved(true);
-      setTimeout(() => setTemplateSaved(false), 2000);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : "Failed to save template");
-    } finally {
-      setIsSavingTemplate(false);
-    }
-  }, [chatId, email, onEnsureChatPath, saveTemplate]);
 
   const isEmailReady = Boolean(email);
   const hasHtmlSource = Boolean(email?.htmlCode);
@@ -401,21 +373,6 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
               >
                 {copiedHtml ? <Check className="size-3" /> : <Copy className="size-3" />}
                 <span className="hidden sm:inline">{copiedHtml ? "Copied" : "Copy"}</span>
-              </Button>
-              <Button
-                onClick={() => void handleSaveTemplate()}
-                disabled={!email.htmlCode || isSavingTemplate}
-                size="sm"
-                className="h-8 px-2 sm:px-3 rounded-xl gap-2 bg-foreground text-background hover:bg-foreground/90 text-[11px] font-semibold shadow-lg shadow-foreground/10 active:scale-[0.98] transition-all"
-              >
-                {isSavingTemplate ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : templateSaved ? (
-                  <Check className="size-3" />
-                ) : (
-                  <BookmarkPlus className="size-3" />
-                )}
-                <span className="hidden sm:inline">{isSavingTemplate ? "Saving" : templateSaved ? "Saved" : "Save"}</span>
               </Button>
               <Button
                 onClick={handleDownloadHtml}

@@ -3,9 +3,75 @@ import React from "react";
 import * as ReactEmailComponents from "@react-email/components";
 import { render } from "@react-email/render";
 
+const stripCodeFence = (source: string) => {
+  const trimmed = source.trim();
+  const fencedMatch = trimmed.match(/^```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n```$/);
+  return fencedMatch ? fencedMatch[1].trim() : trimmed;
+};
+
+const inferComponentName = (source: string) => {
+  const patterns = [
+    /\bfunction\s+([A-Z][A-Za-z0-9_]*)\s*\(/g,
+    /\bconst\s+([A-Z][A-Za-z0-9_]*)\s*=/g,
+    /\blet\s+([A-Z][A-Za-z0-9_]*)\s*=/g,
+    /\bvar\s+([A-Z][A-Za-z0-9_]*)\s*=/g,
+    /\bclass\s+([A-Z][A-Za-z0-9_]*)\b/g,
+  ];
+
+  for (const pattern of patterns) {
+    const matches = [...source.matchAll(pattern)];
+    const candidate = matches.at(-1)?.[1];
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
+export const normalizeEmailSource = (source: string) => {
+  let normalized = stripCodeFence(source).replace(/\r\n/g, "\n").trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const hasReactImport =
+    /require\(\s*["']react["']\s*\)/.test(normalized) ||
+    /from\s+["']react["']/.test(normalized) ||
+    /import\s+\*\s+as\s+React\b/.test(normalized);
+  const needsReactImport =
+    /<[A-Za-z]/.test(normalized) || normalized.includes("React.createElement");
+
+  if (!hasReactImport && needsReactImport) {
+    normalized = `import React from "react";\n${normalized}`;
+  }
+
+  const hasSupportedExport =
+    /\bmodule\.exports\.default\b/.test(normalized) ||
+    /\bexports\.default\b/.test(normalized) ||
+    /\bmodule\.exports\s*=/.test(normalized) ||
+    /\bexport\s+default\b/.test(normalized);
+
+  if (!hasSupportedExport) {
+    const componentName = inferComponentName(normalized);
+    if (componentName) {
+      normalized = `${normalized}\n\nmodule.exports.default = ${componentName};`;
+    }
+  }
+
+  return normalized;
+};
+
 export async function compileEmail(tsxCode: string): Promise<string> {
+  const normalizedTsxCode = normalizeEmailSource(tsxCode);
+
+  if (!normalizedTsxCode) {
+    throw new Error("Email template source is empty.");
+  }
+
   // Transform TSX to JavaScript using Sucrase
-  const { code: jsCode } = transform(tsxCode, {
+  const { code: jsCode } = transform(normalizedTsxCode, {
     transforms: ["typescript", "jsx", "imports"],
     jsxRuntime: "classic",
     jsxPragma: "React.createElement",
@@ -39,7 +105,7 @@ export async function compileEmail(tsxCode: string): Promise<string> {
 
   if (!emailExport) {
     throw new Error(
-      "Email template must export a default React component via module.exports.default"
+      "Email template must export a React component or include a recognizable top-level component."
     );
   }
 
@@ -52,7 +118,7 @@ export async function compileEmail(tsxCode: string): Promise<string> {
 
   if (!element) {
     throw new Error(
-      "Email template must export a default React component function or a valid React element via module.exports.default"
+      "Email template must export a default React component function or a valid React element."
     );
   }
 

@@ -8,7 +8,7 @@ import {
   type ChatModelId,
 } from "@/lib/chat-models";
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
-import { compileEmail } from "@/lib/compile-email";
+import { compileEmail, normalizeEmailSource } from "@/lib/compile-email";
 import {
   readReactEmailComponentExample,
   selectReactEmailComponentExampleSlugs,
@@ -25,6 +25,57 @@ const clamp = (text: string, maxLength: number) => {
     return text;
   }
   return `${text.slice(0, maxLength)}...`;
+};
+
+const generateEmailInputSchema = z
+  .object({
+    name: z
+      .union([z.string(), z.null()])
+      .optional()
+      .describe("Name of the email template."),
+    description: z
+      .union([z.string(), z.null()])
+      .optional()
+      .describe("Short plain-English summary of the email."),
+    tsxCode: z
+      .union([z.string(), z.null()])
+      .optional()
+      .describe("Complete React Email source code for the email template."),
+  })
+  .passthrough();
+
+const normalizeOptionalText = (value: string | null | undefined) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || /^(null|undefined|n\/a)$/i.test(trimmed)) {
+    return "";
+  }
+
+  return trimmed;
+};
+
+const fallbackTemplateName = (latestUserText: string) => {
+  const normalizedRequest = latestUserText.replace(/\s+/g, " ").trim();
+  if (!normalizedRequest) {
+    return "Generated Email Template";
+  }
+
+  return clamp(normalizedRequest, 60);
+};
+
+const fallbackTemplateDescription = (
+  latestUserText: string,
+  templateName: string,
+) => {
+  const normalizedRequest = latestUserText.replace(/\s+/g, " ").trim();
+  if (!normalizedRequest) {
+    return `Generated email template for ${templateName}.`;
+  }
+
+  return clamp(`Generated email template for: ${normalizedRequest}`, 160);
 };
 
 const extractLatestUserText = (messages: unknown[]): string => {
@@ -215,7 +266,7 @@ const hasFailedToolResult = (steps: unknown[], toolName: string): boolean =>
   });
 
 export async function POST(req: Request) {
-  const { id, messages, templateIds, model } = await req.json();
+  const { id, messages, model } = await req.json();
 
   if (typeof id !== "string" || !Array.isArray(messages)) {
     return Response.json({ error: "Invalid request payload" }, { status: 400 });
@@ -238,12 +289,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const safeTemplateIds = Array.isArray(templateIds)
-    ? templateIds
-        .filter((value): value is string => typeof value === "string")
-        .slice(0, 3)
-    : [];
-
   const uploadedImages = await fetchAuthQuery(api.images.listByChatId, {
     chatId: id,
   });
@@ -256,39 +301,8 @@ export async function POST(req: Request) {
     )
     .join("\n");
 
-  const referenceTemplates =
-    safeTemplateIds.length > 0
-      ? await fetchAuthQuery(api.emails.getTemplateStyleReferences, {
-          ids: safeTemplateIds as never,
-        })
-      : [];
-
-  const templateContext = referenceTemplates
-    .map((template, index) => {
-      const style = template.styleProfile;
-      return [
-        `Template ${index + 1}: ${template.name}`,
-        `Description: ${template.description}`,
-        `Colors: ${style.colors.join(", ") || "not detected"}`,
-        `Fonts: ${style.fontFamilies.join(", ") || "not detected"}`,
-        `Max width: ${style.maxWidth ?? "not detected"}`,
-        `Radius values: ${style.radiusValues.join(", ") || "not detected"}`,
-        `Spacing values: ${style.spacingValues.join(", ") || "not detected"}`,
-        `Button backgrounds: ${style.buttonBackgrounds.join(", ") || "not detected"}`,
-        `Button text colors: ${style.buttonTextColors.join(", ") || "not detected"}`,
-        `Header-like section: ${style.hasHeaderLikeSection ? "yes" : "no"}`,
-        `Footer-like section: ${style.hasFooterLikeSection ? "yes" : "no"}`,
-        `HTML style excerpt:\n${clamp(template.htmlCode, 2400)}`,
-      ].join("\n");
-    })
-    .join("\n\n");
-
   const imagePromptSection = imageContext
     ? `\n\nUploaded images for this chat:\n${imageContext}\n\nIf the user asks for logos, illustrations, product images, avatars, hero images, icons, or card art, prefer these uploaded image URLs over placeholders.`
-    : "";
-
-  const templatePromptSection = templateContext
-    ? `\n\nReference templates selected by the user:\n${templateContext}\n\nUse these references to keep a consistent visual theme across emails. Match color palette, typography feel, spacing rhythm, and CTA styling. Do not copy exact marketing text from references; only transfer style and layout language.`
     : "";
 
   const latestUserText = extractLatestUserText(messages);
@@ -315,7 +329,7 @@ export async function POST(req: Request) {
     ? '\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call read_component_examples to fetch relevant local React Email references.\n4. Call generate_email with the complete template code.\n5. If generate_email returns success: false, revise the code and call generate_email again.\n6. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
     : "";
 
-  const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${templatePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
+  const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
 
   const tools = {
     plan_email: tool({
@@ -438,28 +452,37 @@ export async function POST(req: Request) {
     }),
     generate_email: tool({
       description:
-        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design and read_component_examples before using this tool for email requests. The tsxCode parameter must contain the complete email component code.",
-      inputSchema: z.object({
-        name: z
-          .string()
-          .describe("Name of the email template (e.g. 'Welcome Email')"),
-        description: z
-          .string()
-          .describe("Brief description of what the email is for"),
-        tsxCode: z
-          .string()
-          .describe(
-            "The complete TSX/JS code for the email template using React.createElement and @react-email/components. Must use require() and module.exports.default. Export a component function, for example: module.exports.default = function Email() { return React.createElement(...); }. Do not export React.createElement(...) directly. Import the real React Email components from require('@react-email/components') and do not define local replacement components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.",
-          ),
-      }),
+        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design and read_component_examples before using this tool for email requests. Pass name, description, and tsxCode. The system will normalize equivalent React Email source formats before compiling.",
+      inputSchema: generateEmailInputSchema,
       execute: async ({ name, description, tsxCode }) => {
+        const normalizedName =
+          normalizeOptionalText(name) || fallbackTemplateName(latestUserText);
+        const normalizedDescription =
+          normalizeOptionalText(description) ||
+          fallbackTemplateDescription(latestUserText, normalizedName);
+        const normalizedTsxCode = normalizeEmailSource(
+          normalizeOptionalText(tsxCode),
+        );
+
+        if (normalizedTsxCode.length < 40) {
+          return {
+            success: false,
+            error:
+              "No usable email source code was provided. Retry generate_email with the full React Email source file in tsxCode.",
+            name: normalizedName,
+            description: normalizedDescription,
+            tsxCode: normalizedTsxCode,
+            htmlCode: "",
+          };
+        }
+
         try {
-          const htmlCode = await compileEmail(tsxCode);
+          const htmlCode = await compileEmail(normalizedTsxCode);
           return {
             success: true,
-            name,
-            description,
-            tsxCode,
+            name: normalizedName,
+            description: normalizedDescription,
+            tsxCode: normalizedTsxCode,
             htmlCode,
           };
         } catch (error) {
@@ -469,10 +492,10 @@ export async function POST(req: Request) {
               : "Unknown compilation error";
           return {
             success: false,
-            error: message,
-            name,
-            description,
-            tsxCode,
+            error: `${message}\n\nRetry generate_email with name, description, and the full React Email source file in tsxCode. Equivalent export styles are allowed, but the code must compile cleanly.`,
+            name: normalizedName,
+            description: normalizedDescription,
+            tsxCode: normalizedTsxCode,
             htmlCode: "",
           };
         }
@@ -530,7 +553,7 @@ export async function POST(req: Request) {
         return {
           activeTools: ["generate_email"],
           toolChoice: { type: "tool", toolName: "generate_email" },
-          system: `${systemPrompt}\n\nCurrent step: generate the full email template now. If the compile fails, fix the code and call generate_email again.`,
+          system: `${systemPrompt}\n\nCurrent step: generate the full email template now.\n\nYour next response must be a generate_email tool call with this JSON shape:\n{\n  "name": "Descriptive template name",\n  "description": "Short plain-English summary of the email's purpose",\n  "tsxCode": "Full React Email source code as a string"\n}\n\nDo not omit tsxCode. Avoid placeholder punctuation or partial code. If the compile fails, fix the code and call generate_email again.`,
         };
       }
 
