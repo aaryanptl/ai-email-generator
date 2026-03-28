@@ -1,40 +1,40 @@
 import { createClient } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import type { GenericCtx } from "@convex-dev/better-auth/utils";
-import { betterAuth, type BetterAuthOptions } from "better-auth";
-import authConfig from "../auth.config";
+import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { components } from "../_generated/api";
 import type { DataModel } from "../_generated/dataModel";
+import authConfig from "../auth.config";
 
 export const authComponent = createClient<DataModel>(components.betterAuth, {
-  verbose: false,
+	verbose: false,
 });
 
 const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
-  return {
-    appName: "AI Email Generator",
-    baseURL: process.env.BETTER_AUTH_URL,
-    secret: process.env.BETTER_AUTH_SECRET,
-    database: authComponent.adapter(ctx),
-    session: {
-      cookieCache: {
-        enabled: true,
-        maxAge: 60 * 10,
-        refreshCache: true,
-      },
-    },
-    socialProviders: {
-      google: {
-        clientId: process.env.GOOGLE_CLIENT_ID as string,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-      },
-    },
-    plugins: [convex({ authConfig })],
-  } satisfies BetterAuthOptions;
+	return {
+		appName: "AI Email Generator",
+		baseURL: process.env.BETTER_AUTH_URL,
+		secret: process.env.BETTER_AUTH_SECRET,
+		database: authComponent.adapter(ctx),
+		session: {
+			cookieCache: {
+				enabled: true,
+				maxAge: 60 * 10,
+				refreshCache: true,
+			},
+		},
+		socialProviders: {
+			google: {
+				clientId: process.env.GOOGLE_CLIENT_ID as string,
+				clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+			},
+		},
+		plugins: [convex({ authConfig })],
+	} satisfies BetterAuthOptions;
 };
 
 export const options = createAuthOptions({} as GenericCtx<DataModel>);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
-  return betterAuth(createAuthOptions(ctx));
+	return betterAuth(createAuthOptions(ctx));
 };

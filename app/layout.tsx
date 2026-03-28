@@ -7,41 +7,44 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { getToken } from "@/lib/auth-server";
 import "./globals.css";
 
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
+const geistMono = Geist_Mono({
+	subsets: ["latin"],
+	variable: "--font-geist-mono",
+});
 
 const geist = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
+	subsets: ["latin"],
+	variable: "--font-geist-sans",
 });
 
 export const metadata: Metadata = {
-  title: "AI Email Generator",
-  description: "Generate beautiful email templates with AI using React Email",
+	title: "AI Email Generator",
+	description: "Generate beautiful email templates with AI using React Email",
 };
 
 export default async function RootLayout({
-  children,
+	children,
 }: Readonly<{
-  children: React.ReactNode;
+	children: React.ReactNode;
 }>) {
-  const initialToken = await getToken();
+	const initialToken = await getToken();
 
-  return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${geist.variable} ${geistMono.variable}`}
-    >
-      <body
-        className={`${geist.className} min-h-screen bg-mesh-soft antialiased`}
-      >
-        <ConvexClientProvider initialToken={initialToken ?? null}>
-          <ThemeProvider>
-            <TooltipProvider>{children}</TooltipProvider>
-            <Toaster richColors />
-          </ThemeProvider>
-        </ConvexClientProvider>
-      </body>
-    </html>
-  );
+	return (
+		<html
+			lang="en"
+			suppressHydrationWarning
+			className={`${geist.variable} ${geistMono.variable}`}
+		>
+			<body
+				className={`${geist.className} min-h-screen bg-mesh-soft antialiased`}
+			>
+				<ConvexClientProvider initialToken={initialToken ?? null}>
+					<ThemeProvider>
+						<TooltipProvider>{children}</TooltipProvider>
+						<Toaster richColors />
+					</ThemeProvider>
+				</ConvexClientProvider>
+			</body>
+		</html>
+	);
 }

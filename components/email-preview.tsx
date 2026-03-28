@@ -5,13 +5,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 interface EmailPreviewProps {
-  htmlCode: string;
+	htmlCode: string;
 }
 
 const DESKTOP_PREVIEW_MAX_WIDTH = "720px";
 
 const getPreviewHtml = (htmlCode: string, isMobile: boolean) => {
-  const previewReset = `
+	const previewReset = `
     <style>
       html, body {
         margin: 0;
@@ -27,9 +27,9 @@ const getPreviewHtml = (htmlCode: string, isMobile: boolean) => {
         box-sizing: border-box;
       }
       ${
-        isMobile
-          ? ""
-          : `
+				isMobile
+					? ""
+					: `
       body {
         background: transparent !important;
       }
@@ -50,54 +50,54 @@ const getPreviewHtml = (htmlCode: string, isMobile: boolean) => {
         background: transparent !important;
       }
       `
-      }
+			}
     </style>
   `;
 
-  if (htmlCode.includes("</head>")) {
-    return htmlCode.replace("</head>", `${previewReset}</head>`);
-  }
+	if (htmlCode.includes("</head>")) {
+		return htmlCode.replace("</head>", `${previewReset}</head>`);
+	}
 
-  return `${previewReset}${htmlCode}`;
+	return `${previewReset}${htmlCode}`;
 };
 
 export function EmailPreview({ htmlCode }: EmailPreviewProps) {
-  const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
-  const isMobile = viewMode === "mobile";
+	const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
+	const isMobile = viewMode === "mobile";
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1 border-b border-border/60 px-4 py-2.5">
-        <Button
-          onClick={() => setViewMode("desktop")}
-          variant={viewMode === "desktop" ? "secondary" : "ghost"}
-          size="sm"
-        >
-          <Monitor data-icon="inline-start" />
-          Desktop
-        </Button>
-        <Button
-          onClick={() => setViewMode("mobile")}
-          variant={viewMode === "mobile" ? "secondary" : "ghost"}
-          size="sm"
-        >
-          <Smartphone data-icon="inline-start" />
-          Mobile
-        </Button>
-      </div>
-      <div className="flex flex-1 justify-center overflow-auto bg-muted/35 p-4">
-        <iframe
-          srcDoc={getPreviewHtml(htmlCode, isMobile)}
-          title="Email Preview"
-          sandbox="allow-same-origin"
-          className="h-full min-h-0 border-0 bg-white shadow-sm"
-          style={{
-            width: isMobile ? "375px" : "100%",
-            maxWidth: isMobile ? "375px" : "100%",
-            minHeight: "100%",
-          }}
-        />
-      </div>
-    </div>
-  );
+	return (
+		<div className="flex h-full flex-col">
+			<div className="flex items-center gap-1 border-b border-border/60 px-4 py-2.5">
+				<Button
+					onClick={() => setViewMode("desktop")}
+					variant={viewMode === "desktop" ? "secondary" : "ghost"}
+					size="sm"
+				>
+					<Monitor data-icon="inline-start" />
+					Desktop
+				</Button>
+				<Button
+					onClick={() => setViewMode("mobile")}
+					variant={viewMode === "mobile" ? "secondary" : "ghost"}
+					size="sm"
+				>
+					<Smartphone data-icon="inline-start" />
+					Mobile
+				</Button>
+			</div>
+			<div className="flex flex-1 justify-center overflow-auto bg-muted/35 p-4">
+				<iframe
+					srcDoc={getPreviewHtml(htmlCode, isMobile)}
+					title="Email Preview"
+					sandbox="allow-same-origin"
+					className="h-full min-h-0 border-0 bg-white shadow-sm"
+					style={{
+						width: isMobile ? "375px" : "100%",
+						maxWidth: isMobile ? "375px" : "100%",
+						minHeight: "100%",
+					}}
+				/>
+			</div>
+		</div>
+	);
 }
