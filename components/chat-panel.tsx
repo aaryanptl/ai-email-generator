@@ -305,8 +305,20 @@ export function ChatPanel({
 }: ChatPanelProps) {
 	const processedToolCallsRef = useRef<Set<string>>(new Set());
 	const [input, setInput] = useState("");
-	const [selectedModel, setSelectedModel] =
-		useState<ChatModelId>(DEFAULT_CHAT_MODEL);
+	const [selectedModel, setSelectedModel] = useState<ChatModelId>(() => {
+		if (typeof window === "undefined") {
+			return DEFAULT_CHAT_MODEL;
+		}
+
+		try {
+			const storedModel = window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY);
+			return storedModel && isChatModelId(storedModel)
+				? storedModel
+				: DEFAULT_CHAT_MODEL;
+		} catch {
+			return DEFAULT_CHAT_MODEL;
+		}
+	});
 	const [chatError, setChatError] = useState<string | null>(null);
 	const [hasPendingStop, setHasPendingStop] = useState(false);
 	const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -347,17 +359,6 @@ export function ChatPanel({
 	useEffect(() => {
 		onStatusChange?.(isAssistantStreaming);
 	}, [isAssistantStreaming, onStatusChange]);
-
-	useEffect(() => {
-		try {
-			const storedModel = window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY);
-			if (storedModel && isChatModelId(storedModel)) {
-				setSelectedModel(storedModel);
-			}
-		} catch {
-			// Ignore storage access issues and keep the default model.
-		}
-	}, []);
 
 	useEffect(() => {
 		try {

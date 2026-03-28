@@ -5,6 +5,16 @@ export const CHAT_MODELS = [
 		supportsImageInput: false,
 	},
 	{
+		id: "google/gemini-3.1-pro-preview",
+		label: "Gemini 3.1 Pro Preview",
+		supportsImageInput: true,
+	},
+	{
+		id: "z-ai/glm-5-turbo",
+		label: "GLM-5 Turbo",
+		supportsImageInput: false,
+	},
+	{
 		id: "anthropic/claude-sonnet-4.6",
 		label: "Claude Sonnet 4.6",
 		supportsImageInput: true,

@@ -2,13 +2,11 @@
 
 import { useQuery } from "convex/react";
 import {
-	CreditCard,
 	LogOut,
 	Mail,
 	MessageSquare,
 	Plus,
 	Search,
-	Settings,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -248,28 +246,29 @@ export function HistorySidebar({
 								transition={{ duration: 0.15, ease: "easeOut" }}
 								className="absolute bottom-full left-0 right-0 mb-3 z-50 rounded-3xl border border-border/50 bg-popover/95 p-1.5 shadow-2xl backdrop-blur-xl"
 							>
-								<div className="px-3 py-2.5 mb-1 bg-muted/30 rounded-t-[20px] rounded-b-lg">
-									<div className="text-[12px] font-medium truncate leading-tight">
-										{userName || "User"}
-									</div>
-									<div className="text-[10px] text-muted-foreground truncate font-medium opacity-70">
-										{userEmail}
-									</div>
-								</div>
 								<div className="space-y-0.5 p-1">
-									<button
-										type="button"
-										className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[12px] transition-all hover:bg-muted text-foreground font-semibold"
-									>
-										<Settings className="size-3.5 opacity-60" /> Account
-										Settings
-									</button>
-									<button
-										type="button"
-										className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[12px] transition-all hover:bg-muted text-foreground font-semibold"
-									>
-										<CreditCard className="size-3.5 opacity-60" /> Subscription
-									</button>
+									<div className="rounded-xl px-3 py-2 text-foreground">
+										<div className="flex items-center justify-between gap-3">
+											<div className="min-w-0">
+												<div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+													Credits
+												</div>
+												<div className="mt-1 text-[12px] font-semibold">
+													{dailyPromptStatus
+														? `${dailyPromptStatus.remaining} of ${dailyPromptStatus.limit} prompts left`
+														: "Prompt usage unavailable"}
+												</div>
+											</div>
+											{dailyPromptStatus ? (
+												<div className="shrink-0 text-foreground">
+													<PromptUsageRing
+														used={dailyPromptStatus.used}
+														limit={dailyPromptStatus.limit}
+													/>
+												</div>
+											) : null}
+										</div>
+									</div>
 									<div className="h-px bg-border/50 my-1 mx-2" />
 									<button
 										type="button"
