@@ -34,6 +34,8 @@ export function ChatShell({
   initialChatId,
   initialMessages = [],
 }: ChatShellProps) {
+  const layoutBreakpoint = "(min-width: 880px)";
+  const dockedSidebarBreakpoint = "(min-width: 1100px)";
   const router = useRouter();
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
@@ -51,6 +53,7 @@ export function ChatShell({
   const [compilationError, setCompilationError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"chat" | "preview">("chat");
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isHistoryDockedDesktop, setIsHistoryDockedDesktop] = useState(false);
   const [isChatStreaming, setIsChatStreaming] = useState(false);
 
   const upsertUser = useMutation(api.users.upsertFromSession);
@@ -108,6 +111,8 @@ export function ChatShell({
       htmlCode: latestEmail.htmlCode,
     };
   }, [latestEmail, previewEmail]);
+
+  const showDockedHistory = isHistoryDockedDesktop && historyDockedOpen;
 
   const handleGoogleSignIn = useCallback(async () => {
     await authClient.signIn.social({
@@ -192,16 +197,16 @@ export function ChatShell({
   }, []);
 
   const handleToggleHistory = useCallback(() => {
-    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-    if (isDesktop) {
+    const isDockedDesktop = window.matchMedia(dockedSidebarBreakpoint).matches;
+    if (isDockedDesktop) {
       setHistoryDockedOpen((value) => !value);
       return;
     }
     setMobileHistoryOpen((value) => !value);
-  }, []);
+  }, [dockedSidebarBreakpoint]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const mediaQuery = window.matchMedia(layoutBreakpoint);
     const update = () => {
       setIsDesktop(mediaQuery.matches);
     };
@@ -209,7 +214,18 @@ export function ChatShell({
     update();
     mediaQuery.addEventListener("change", update);
     return () => mediaQuery.removeEventListener("change", update);
-  }, []);
+  }, [layoutBreakpoint]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(dockedSidebarBreakpoint);
+    const update = () => {
+      setIsHistoryDockedDesktop(mediaQuery.matches);
+    };
+
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, [dockedSidebarBreakpoint]);
 
   if (sessionPending) {
     return (
@@ -264,68 +280,93 @@ export function ChatShell({
       />
 
       {isDesktop ? (
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className="h-full w-full min-w-0"
-        >
-          {historyDockedOpen ? (
-            <>
-              <ResizablePanel
-                defaultSize="20%"
-                minSize="18%"
-                maxSize="30%"
-                className="min-w-[280px]"
+        <>
+          {!isHistoryDockedDesktop ? (
+            <div className="pointer-events-none fixed left-3 top-3 z-30">
+              <Button
+                type="button"
+                onClick={handleToggleHistory}
+                variant="ghost"
+                size="icon"
+                className="pointer-events-auto size-9 rounded-3xl border border-border/70 bg-card/95 shadow-sm backdrop-blur"
+                aria-label="Open history"
               >
-                <HistorySidebar
-                  variant="docked"
-                  chats={historyChats}
-                  activeChatId={hasPersistedPath ? chatId : undefined}
-                  onSelectChat={handleSelectChat}
-                  onDeleteChat={handleDeleteChat}
-                  userEmail={session.user.email ?? "Signed in"}
-                  userName={session.user.name ?? undefined}
-                  userImage={session.user.image ?? null}
-                  onSignOut={() => void handleSignOut()}
-                  onNewChat={handleNewChat}
-                />
-              </ResizablePanel>
-              <ResizableHandle className="w-0.5 bg-border/20 hover:bg-foreground/10 transition-colors" />
-            </>
+                <PanelLeftOpen className="size-4" />
+              </Button>
+            </div>
           ) : null}
 
-          <ResizablePanel
-            defaultSize={historyDockedOpen ? "35%" : "40%"}
-            minSize="30%"
-            maxSize="50%"
-            className="min-w-[420px] bg-card"
+          <ResizablePanelGroup
+            id="chat-layout"
+            direction="horizontal"
+            className="h-full w-full min-w-0"
           >
-            <ChatPanel
-              key={chatId}
-              chatId={chatId}
-              initialMessages={chatInitialMessages}
-              onEmailGenerated={handleEmailGenerated}
-              onEnsureChatPath={handleEnsureChatPath}
-              onStatusChange={setIsChatStreaming}
-            />
-          </ResizablePanel>
+            {isHistoryDockedDesktop && historyDockedOpen ? (
+              <>
+                <ResizablePanel
+                  id="history-panel"
+                  order={1}
+                  defaultSize={10}
+                  minSize={15}
+                  maxSize={25}
+                  className="min-w-[150px]"
+                >
+                  <HistorySidebar
+                    variant="docked"
+                    chats={historyChats}
+                    activeChatId={hasPersistedPath ? chatId : undefined}
+                    onSelectChat={handleSelectChat}
+                    onDeleteChat={handleDeleteChat}
+                    userEmail={session.user.email ?? "Signed in"}
+                    userName={session.user.name ?? undefined}
+                    userImage={session.user.image ?? null}
+                    onSignOut={() => void handleSignOut()}
+                    onNewChat={handleNewChat}
+                  />
+                </ResizablePanel>
+                <ResizableHandle className="w-0.5 bg-border/20 hover:bg-foreground/10 transition-colors" />
+              </>
+            ) : null}
 
-          <ResizableHandle className="w-0.5 bg-border/20 hover:bg-foreground/10 transition-colors" />
+            <ResizablePanel
+              id="chat-panel"
+              order={showDockedHistory ? 2 : 1}
+              defaultSize={showDockedHistory ? 35 : 40}
+              minSize={20}
+              maxSize={70}
+              className="bg-card min-w-[150px]"
+            >
+              <ChatPanel
+                key={chatId}
+                chatId={chatId}
+                initialMessages={chatInitialMessages}
+                onEmailGenerated={handleEmailGenerated}
+                onEnsureChatPath={handleEnsureChatPath}
+                onStatusChange={setIsChatStreaming}
+              />
+            </ResizablePanel>
 
-          <ResizablePanel
-            defaultSize={historyDockedOpen ? "45%" : "60%"}
-            minSize="40%"
-            className="min-w-[520px] bg-surface-canvas"
-          >
-            <ArtifactPanel
-              key={chatId}
-              chatId={chatId}
-              email={currentEmail}
-              compilationError={compilationError}
-              isStreaming={isChatStreaming}
-              onEnsureChatPath={handleEnsureChatPath}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <ResizableHandle className="w-0.5 bg-border/20 hover:bg-foreground/10 transition-colors" />
+
+            <ResizablePanel
+              id="preview-panel"
+              order={showDockedHistory ? 3 : 2}
+              defaultSize={showDockedHistory ? 45 : 60}
+              minSize={20}
+              maxSize={70}
+              className="min-w-[360px]"
+            >
+              <ArtifactPanel
+                key={chatId}
+                chatId={chatId}
+                email={currentEmail}
+                compilationError={compilationError}
+                isStreaming={isChatStreaming}
+                onEnsureChatPath={handleEnsureChatPath}
+              />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </>
       ) : (
         <>
           <div className="fixed inset-x-3 top-3 z-30 flex items-center gap-1 rounded-4xl border border-border/70 bg-card/95 p-1 shadow-sm backdrop-blur">

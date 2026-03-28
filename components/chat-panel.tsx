@@ -184,20 +184,25 @@ function PromptSubmitButton({
   input,
   status,
   blocked,
+  onStop,
 }: {
   input: string;
   status: ChatStatus;
   blocked: boolean;
+  onStop: () => void;
 }) {
   const attachments = usePromptInputAttachments();
+  const isGenerating = status === "submitted" || status === "streaming";
   const isDisabled =
-    blocked || (input.trim().length === 0 && attachments.files.length === 0);
+    !isGenerating &&
+    (blocked || (input.trim().length === 0 && attachments.files.length === 0));
 
   return (
     <PromptInputSubmit
-      status={status}
       className="rounded-full bg-foreground text-background hover:bg-foreground/90"
       disabled={isDisabled}
+      onStop={onStop}
+      status={status}
     />
   );
 }
@@ -406,7 +411,7 @@ export function ChatPanel({
     });
   }, [selectedTemplateIds, selectedEmailCategory, selectedModel]);
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, stop } = useChat({
     id: chatId,
     messages: initialMessages,
     transport: chatTransport,
@@ -935,6 +940,7 @@ export function ChatPanel({
                 input={input}
                 status={status}
                 blocked={hasReachedDailyLimit}
+                onStop={stop}
               />
             </PromptInputFooter>
           </PromptInput>

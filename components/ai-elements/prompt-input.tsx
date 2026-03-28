@@ -1099,9 +1099,11 @@ export const PromptInputSubmit = ({
   onStop,
   onClick,
   children,
+  disabled,
   ...props
 }: PromptInputSubmitProps) => {
   const isGenerating = status === "submitted" || status === "streaming";
+  const isStopEnabled = isGenerating && Boolean(onStop);
 
   let Icon = <CornerDownLeftIcon className="size-4" />;
 
@@ -1127,13 +1129,14 @@ export const PromptInputSubmit = ({
 
   return (
     <InputGroupButton
+      {...props}
       aria-label={isGenerating ? "Stop" : "Submit"}
       className={cn(className)}
+      disabled={isStopEnabled ? false : disabled}
       onClick={handleClick}
       size={size}
-      type={isGenerating && onStop ? "button" : "submit"}
+      type={isStopEnabled ? "button" : "submit"}
       variant={variant}
-      {...props}
     >
       {children ?? Icon}
     </InputGroupButton>

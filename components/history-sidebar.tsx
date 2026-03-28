@@ -304,7 +304,7 @@ export function HistorySidebar({
   );
 
   if (variant === "docked") {
-    return <div className="h-full min-w-0 overflow-hidden border-r border-border/70">{panel}</div>;
+    return <div className="h-full w-full min-w-0 overflow-hidden border-r border-border/70">{panel}</div>;
   }
 
   if (!open) return null;
@@ -313,9 +313,9 @@ export function HistorySidebar({
     <>
       <div
         onClick={onClose}
-        className="fixed inset-0 z-40 bg-background/60 backdrop-blur-[2px] lg:hidden"
+        className="fixed inset-0 z-40 bg-background/60 backdrop-blur-[2px] min-[1100px]:hidden"
       />
-      <div className="fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-border/70 bg-card shadow-2xl lg:hidden">
+      <div className="fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-border/70 bg-card shadow-2xl min-[1100px]:hidden">
         {panel}
       </div>
     </>

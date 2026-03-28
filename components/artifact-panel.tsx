@@ -359,8 +359,8 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface-canvas">
       {email ? (
         <div className="z-10 shrink-0 border-b border-border/50 bg-card/80 backdrop-blur-md shadow-sm">
-          <div className="flex items-center gap-3 px-4 py-1.5">
-            <div className="flex w-fit items-center gap-0.5 rounded-xl bg-muted/40 p-1">
+          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5">
+            <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-muted/40 p-1 overflow-x-auto no-scrollbar">
               {[
                 { id: "preview", label: "Visual", icon: Eye },
                 { id: "code", label: "Source", icon: Code2 },
@@ -370,42 +370,43 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as ArtifactTab)}
                   className={cn(
-                    "relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                    "relative flex shrink-0 items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all",
                     activeTab === tab.id
                       ? "text-foreground bg-card dark:bg-surface-elevated shadow-md ring-1 ring-border/20"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
                   )}
                 >
                   <tab.icon className="size-3.5" />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.label.slice(0, 3)}</span>
                 </button>
               ))}
             </div>
 
-            <div className="w-px h-5 bg-border/40 mx-1" />
+            <div className="hidden sm:block w-px h-5 bg-border/40 mx-1 shrink-0" />
 
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 hidden sm:block">
               <h3 className="truncate text-[12px] font-medium text-muted-foreground opacity-70">
                 {email.name}
               </h3>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex shrink-0 items-center gap-1.5 ml-auto">
               <Button
                 onClick={handleCopyHtml}
                 disabled={!email.htmlCode}
                 variant="ghost"
                 size="sm"
-                className="h-8 px-3 rounded-xl gap-2 text-[11px] font-medium hover:bg-muted/50"
+                className="h-8 px-2 sm:px-3 rounded-xl gap-2 text-[11px] font-medium hover:bg-muted/50"
               >
                 {copiedHtml ? <Check className="size-3" /> : <Copy className="size-3" />}
-                {copiedHtml ? "Copied" : "Copy"}
+                <span className="hidden sm:inline">{copiedHtml ? "Copied" : "Copy"}</span>
               </Button>
               <Button
                 onClick={() => void handleSaveTemplate()}
                 disabled={!email.htmlCode || isSavingTemplate}
                 size="sm"
-                className="h-8 px-3 rounded-xl gap-2 bg-foreground text-background hover:bg-foreground/90 text-[11px] font-semibold shadow-lg shadow-foreground/10 active:scale-[0.98] transition-all"
+                className="h-8 px-2 sm:px-3 rounded-xl gap-2 bg-foreground text-background hover:bg-foreground/90 text-[11px] font-semibold shadow-lg shadow-foreground/10 active:scale-[0.98] transition-all"
               >
                 {isSavingTemplate ? (
                   <Loader2 className="size-3 animate-spin" />
@@ -414,7 +415,7 @@ export function ArtifactPanel({ chatId, email, compilationError, isStreaming, on
                 ) : (
                   <BookmarkPlus className="size-3" />
                 )}
-                {isSavingTemplate ? "Saving" : templateSaved ? "Saved" : "Save"}
+                <span className="hidden sm:inline">{isSavingTemplate ? "Saving" : templateSaved ? "Saved" : "Save"}</span>
               </Button>
               <Button
                 onClick={handleDownloadHtml}

@@ -287,3 +287,7 @@
   width: 0px;
   display: none;
 }
+
+* {
+  scrollbar-width: none;
+}

@@ -8,67 +8,9 @@ interface EmailPreviewProps {
   htmlCode: string;
 }
 
-const expandDesktopPreviewHtml = (htmlCode: string) =>
-  htmlCode
-    .replace(
-      /<(table|div|td)([^>]*?)style="([^"]*)"([^>]*)>/gi,
-      (_match, tag: string, before: string, style: string, after: string) => {
-        let nextStyle = style;
-
-        if (/max-width\s*:/i.test(nextStyle)) {
-          nextStyle = nextStyle.replace(/max-width\s*:\s*[^;"]+;?/gi, "max-width:100%;");
-        }
-
-        if (/width\s*:\s*\d+px/i.test(nextStyle)) {
-          nextStyle = nextStyle.replace(/width\s*:\s*\d+px;?/gi, "width:100%;");
-        }
-
-        if (/margin\s*:\s*0\s+auto/i.test(nextStyle)) {
-          nextStyle = nextStyle.replace(/margin\s*:\s*0\s+auto;?/gi, "margin:0;");
-        }
-
-        return `<${tag}${before}style="${nextStyle}"${after}>`;
-      },
-    )
-    .replace(/<(table|td|div)([^>]*?)\swidth="(\d+%?|\d+px|\d+)"([^>]*)>/gi, "<$1$2 width=\"100%\"$4>");
+const DESKTOP_PREVIEW_MAX_WIDTH = "720px";
 
 const getPreviewHtml = (htmlCode: string, isMobile: boolean) => {
-  const previewMarkup = isMobile ? htmlCode : expandDesktopPreviewHtml(htmlCode);
-  const desktopExpansion = isMobile
-    ? ""
-    : `
-      body > div,
-      body > table,
-      body > center,
-      body > center > table,
-      body > center > div,
-      table[align="center"],
-      [style*="max-width"] {
-        width: 100% !important;
-        max-width: 100% !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-      }
-      body > div,
-      body > table,
-      body > center,
-      body > center > table,
-      body > center > div {
-        min-height: 100vh !important;
-      }
-      body > div:first-child,
-      body > table:first-child,
-      body > center:first-child,
-      body > center > div:first-child,
-      body > center > table:first-child,
-      body > div:first-child > table:first-child,
-      body > table:first-child > tbody > tr:first-child > td:first-child,
-      body > center > table:first-child > tbody > tr:first-child > td:first-child {
-        min-height: 100vh !important;
-        height: 100vh !important;
-      }
-    `;
-
   const previewReset = `
     <style>
       html, body {
@@ -84,15 +26,39 @@ const getPreviewHtml = (htmlCode: string, isMobile: boolean) => {
       *, *::before, *::after {
         box-sizing: border-box;
       }
-      ${desktopExpansion}
+      ${
+        isMobile
+          ? ""
+          : `
+      body {
+        background: transparent !important;
+      }
+      body > div:not([style*="display:none"]):not([style*="max-height:0"]):not([style*="opacity:0"]),
+      body > table:not([style*="display:none"]):not([style*="max-height:0"]),
+      body > center:not([style*="display:none"]):not([style*="max-height:0"]) {
+        width: min(100%, ${DESKTOP_PREVIEW_MAX_WIDTH}) !important;
+        max-width: ${DESKTOP_PREVIEW_MAX_WIDTH} !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+      }
+      body > center > table,
+      body > div:not([style*="display:none"]):not([style*="max-height:0"]):not([style*="opacity:0"]) > table:first-child {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      body > div:not([style*="display:none"]):not([style*="max-height:0"]):not([style*="opacity:0"]) {
+        background: transparent !important;
+      }
+      `
+      }
     </style>
   `;
 
-  if (previewMarkup.includes("</head>")) {
-    return previewMarkup.replace("</head>", `${previewReset}</head>`);
+  if (htmlCode.includes("</head>")) {
+    return htmlCode.replace("</head>", `${previewReset}</head>`);
   }
 
-  return `${previewReset}${previewMarkup}`;
+  return `${previewReset}${htmlCode}`;
 };
 
 export function EmailPreview({ htmlCode }: EmailPreviewProps) {
@@ -119,16 +85,12 @@ export function EmailPreview({ htmlCode }: EmailPreviewProps) {
           Mobile
         </Button>
       </div>
-      <div
-        className={`flex flex-1 overflow-auto bg-muted/35 ${
-          isMobile ? "justify-center" : "justify-stretch"
-        }`}
-      >
+      <div className="flex flex-1 justify-center overflow-auto bg-muted/35 p-4">
         <iframe
           srcDoc={getPreviewHtml(htmlCode, isMobile)}
           title="Email Preview"
           sandbox="allow-same-origin"
-          className="h-full min-h-0 border-0 bg-white"
+          className="h-full min-h-0 border-0 bg-white shadow-sm"
           style={{
             width: isMobile ? "375px" : "100%",
             maxWidth: isMobile ? "375px" : "100%",

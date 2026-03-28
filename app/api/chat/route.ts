@@ -1,8 +1,18 @@
 import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
-import { DEFAULT_CHAT_MODEL, isChatModelId } from "@/lib/chat-models";
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_VISION_CHAT_MODEL,
+  isChatModelId,
+  modelSupportsImageInput,
+  type ChatModelId,
+} from "@/lib/chat-models";
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
 import { compileEmail } from "@/lib/compile-email";
+import {
+  readReactEmailComponentExample,
+  selectReactEmailComponentExampleSlugs,
+} from "@/lib/react-email-component-examples";
 import { listSkills, readSkill } from "@/lib/skills";
 import { openrouter } from "@/lib/openrouter";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
@@ -63,6 +73,75 @@ const extractLatestUserText = (messages: unknown[]): string => {
   }
 
   return "";
+};
+
+const messageHasImageInput = (message: unknown): boolean => {
+  if (typeof message !== "object" || message === null) {
+    return false;
+  }
+
+  const row = message as {
+    parts?: unknown;
+    experimental_attachments?: unknown;
+    files?: unknown;
+  };
+
+  const hasImageLikeValue = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) {
+      return false;
+    }
+
+    const candidate = value as {
+      type?: unknown;
+      mediaType?: unknown;
+      mimeType?: unknown;
+      contentType?: unknown;
+      url?: unknown;
+      data?: unknown;
+    };
+
+    const mimeCandidates = [
+      candidate.mediaType,
+      candidate.mimeType,
+      candidate.contentType,
+      candidate.type,
+    ];
+
+    if (
+      mimeCandidates.some(
+        (mime) => typeof mime === "string" && mime.startsWith("image/"),
+      )
+    ) {
+      return true;
+    }
+
+    return (
+      (typeof candidate.url === "string" &&
+        candidate.url.startsWith("data:image/")) ||
+      (typeof candidate.data === "string" &&
+        candidate.data.startsWith("data:image/"))
+    );
+  };
+
+  return [row.parts, row.experimental_attachments, row.files].some(
+    (collection) =>
+      Array.isArray(collection) &&
+      collection.some((item) => hasImageLikeValue(item)),
+  );
+};
+
+const messagesHaveImageInput = (messages: unknown[]): boolean =>
+  messages.some((message) => messageHasImageInput(message));
+
+const resolveModelForRequest = (
+  selectedModel: ChatModelId,
+  hasImageInput: boolean,
+): ChatModelId => {
+  if (!hasImageInput || modelSupportsImageInput(selectedModel)) {
+    return selectedModel;
+  }
+
+  return DEFAULT_VISION_CHAT_MODEL;
 };
 
 const isEmailGenerationRequest = (text: string): boolean => {
@@ -146,6 +225,8 @@ export async function POST(req: Request) {
     typeof model === "string" && isChatModelId(model)
       ? model
       : DEFAULT_CHAT_MODEL;
+  const hasImageInput = messagesHaveImageInput(messages);
+  const resolvedModel = resolveModelForRequest(selectedModel, hasImageInput);
 
   const dailyUsage = await fetchAuthMutation(api.usage.consumeDailyPrompt, {});
   if (!dailyUsage.allowed) {
@@ -227,11 +308,11 @@ export async function POST(req: Request) {
 
   const designRequestPromptSection =
     hasFrontendDesignSkill && isEmailGenerationRequest(latestUserText)
-      ? "\n\nThe latest user request is asking for an email. You must first call plan_email, then call read_frontend_design, and only then call generate_email."
+      ? "\n\nThe latest user request is asking for an email. You must first call plan_email, then call read_frontend_design, then call read_component_examples, and only then call generate_email."
       : "";
   const requiresToolExecution = isEmailGenerationRequest(latestUserText);
-    const toolCompletionPromptSection = requiresToolExecution
-    ? "\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call generate_email with the complete template code.\n4. If generate_email returns success: false, revise the code and call generate_email again.\n5. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require(\"@react-email/components\").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations."
+  const toolCompletionPromptSection = requiresToolExecution
+    ? '\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call read_component_examples to fetch relevant local React Email references.\n4. Call generate_email with the complete template code.\n5. If generate_email returns success: false, revise the code and call generate_email again.\n6. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
     : "";
 
   const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${templatePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
@@ -240,7 +321,7 @@ export async function POST(req: Request) {
     plan_email: tool({
       description:
         "Create a concise implementation brief for the requested email before any design or code generation work begins.",
-        inputSchema: z.object({
+      inputSchema: z.object({
         goal: z
           .string()
           .optional()
@@ -249,10 +330,7 @@ export async function POST(req: Request) {
           .string()
           .optional()
           .describe("The intended audience for the email."),
-        tone: z
-          .string()
-          .optional()
-          .describe("The writing tone for the email."),
+        tone: z.string().optional().describe("The writing tone for the email."),
         visualDirection: z
           .string()
           .optional()
@@ -269,20 +347,17 @@ export async function POST(req: Request) {
       execute: async (input) => ({
         success: true,
         goal: input.goal?.trim() || "Generate a clear, high-converting email.",
-        audience: input.audience?.trim() || "The intended recipient of the email.",
+        audience:
+          input.audience?.trim() || "The intended recipient of the email.",
         tone: input.tone?.trim() || "Clear, credible, and concise.",
         visualDirection:
           input.visualDirection?.trim() ||
           "Modern editorial layout with strong hierarchy and a single prominent CTA.",
-        primaryCta: input.primaryCta?.trim() || "Review the main call to action.",
-        sections:
-          input.sections?.filter((section) => section.trim().length > 0) ?? [
-            "Preview",
-            "Hero",
-            "Body content",
-            "Primary CTA",
-            "Footer",
-          ],
+        primaryCta:
+          input.primaryCta?.trim() || "Review the main call to action.",
+        sections: input.sections?.filter(
+          (section) => section.trim().length > 0,
+        ) ?? ["Preview", "Hero", "Body content", "Primary CTA", "Footer"],
       }),
     }),
     read_frontend_design: tool({
@@ -312,9 +387,58 @@ export async function POST(req: Request) {
         }
       },
     }),
+    read_component_examples: tool({
+      description:
+        "Fetch a small set of relevant local React Email component examples based on the user's request. Use this before generating any email template so the design can borrow appropriate layout patterns without copying the examples literally.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe("The email design request or a concise search query."),
+        maxExamples: z
+          .number()
+          .int()
+          .min(1)
+          .max(4)
+          .optional()
+          .describe("Maximum number of examples to return."),
+      }),
+      execute: async ({ query, maxExamples }) => {
+        const selectedSlugs = selectReactEmailComponentExampleSlugs(
+          query,
+          maxExamples ?? 4,
+        );
+
+        const examples = await Promise.all(
+          selectedSlugs.map((slug) => readReactEmailComponentExample(slug)),
+        );
+
+        return {
+          success: true,
+          query,
+          examples: examples
+            .map((example) => {
+              const preferredFile =
+                example.files.find(
+                  (file) => file.variant === "inline-styles",
+                ) ?? example.files[0];
+
+              return {
+                slug: example.slug,
+                title: example.title,
+                categoryName: example.categoryName,
+                referenceFile: preferredFile?.fileName ?? null,
+                guidance:
+                  "Reuse the structure and component composition when relevant, but do not copy placeholder copy, asset paths, or branding literally.",
+                source: preferredFile ? clamp(preferredFile.source, 2200) : "",
+              };
+            })
+            .filter((example) => example.referenceFile !== null),
+        };
+      },
+    }),
     generate_email: tool({
       description:
-        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design before using this tool whenever that skill is available. The tsxCode parameter must contain the complete email component code.",
+        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design and read_component_examples before using this tool for email requests. The tsxCode parameter must contain the complete email component code.",
       inputSchema: z.object({
         name: z
           .string()
@@ -322,12 +446,12 @@ export async function POST(req: Request) {
         description: z
           .string()
           .describe("Brief description of what the email is for"),
-          tsxCode: z
-            .string()
-            .describe(
-              "The complete TSX/JS code for the email template using React.createElement and @react-email/components. Must use require() and module.exports.default. Export a component function, for example: module.exports.default = function Email() { return React.createElement(...); }. Do not export React.createElement(...) directly. Import the real React Email components from require('@react-email/components') and do not define local replacement components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.",
-            ),
-        }),
+        tsxCode: z
+          .string()
+          .describe(
+            "The complete TSX/JS code for the email template using React.createElement and @react-email/components. Must use require() and module.exports.default. Export a component function, for example: module.exports.default = function Email() { return React.createElement(...); }. Do not export React.createElement(...) directly. Import the real React Email components from require('@react-email/components') and do not define local replacement components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.",
+          ),
+      }),
       execute: async ({ name, description, tsxCode }) => {
         try {
           const htmlCode = await compileEmail(tsxCode);
@@ -357,7 +481,7 @@ export async function POST(req: Request) {
   };
 
   const result = streamText({
-    model: openrouter(selectedModel),
+    model: openrouter(resolvedModel),
     system: systemPrompt,
     messages: await convertToModelMessages(messages, { tools }),
     tools,
@@ -371,6 +495,10 @@ export async function POST(req: Request) {
       const designLoaded =
         !hasFrontendDesignSkill ||
         hasSuccessfulToolResult(steps, "read_frontend_design");
+      const examplesLoaded = hasSuccessfulToolResult(
+        steps,
+        "read_component_examples",
+      );
       const emailGenerated = hasSuccessfulToolResult(steps, "generate_email");
       const emailFailed = hasFailedToolResult(steps, "generate_email");
 
@@ -390,6 +518,14 @@ export async function POST(req: Request) {
         };
       }
 
+      if (!examplesLoaded) {
+        return {
+          activeTools: ["read_component_examples"],
+          toolChoice: { type: "tool", toolName: "read_component_examples" },
+          system: `${systemPrompt}\n\nCurrent step: fetch the most relevant local React Email component examples for this request and use them as design references.`,
+        };
+      }
+
       if (!emailGenerated || emailFailed) {
         return {
           activeTools: ["generate_email"],
@@ -404,7 +540,7 @@ export async function POST(req: Request) {
       };
     },
 
-    stopWhen: stepCountIs(8),
+    stopWhen: stepCountIs(10),
   });
 
   return result.toUIMessageStreamResponse({
