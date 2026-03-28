@@ -10,10 +10,9 @@ import {
 import { EMAIL_SYSTEM_PROMPT } from "@/lib/email-system-prompt";
 import { compileEmail, normalizeEmailSource } from "@/lib/compile-email";
 import {
-  readReactEmailComponentExample,
-  selectReactEmailComponentExampleSlugs,
-} from "@/lib/react-email-component-examples";
-import { listSkills, readSkill } from "@/lib/skills";
+  listSkills,
+  readSkill,
+} from "@/lib/skills";
 import { openrouter } from "@/lib/openrouter";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
@@ -322,11 +321,11 @@ export async function POST(req: Request) {
 
   const designRequestPromptSection =
     hasFrontendDesignSkill && isEmailGenerationRequest(latestUserText)
-      ? "\n\nThe latest user request is asking for an email. You must first call plan_email, then call read_frontend_design, then call read_component_examples, and only then call generate_email."
+      ? "\n\nThe latest user request is asking for an email. You must first call plan_email, then call read_frontend_design, and only then call generate_email."
       : "";
   const requiresToolExecution = isEmailGenerationRequest(latestUserText);
   const toolCompletionPromptSection = requiresToolExecution
-    ? '\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call read_component_examples to fetch relevant local React Email references.\n4. Call generate_email with the complete template code.\n5. If generate_email returns success: false, revise the code and call generate_email again.\n6. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
+    ? '\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call generate_email with the complete template code.\n4. If generate_email returns success: false, revise the code and call generate_email again.\n5. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
     : "";
 
   const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
@@ -401,58 +400,9 @@ export async function POST(req: Request) {
         }
       },
     }),
-    read_component_examples: tool({
-      description:
-        "Fetch a small set of relevant local React Email component examples based on the user's request. Use this before generating any email template so the design can borrow appropriate layout patterns without copying the examples literally.",
-      inputSchema: z.object({
-        query: z
-          .string()
-          .describe("The email design request or a concise search query."),
-        maxExamples: z
-          .number()
-          .int()
-          .min(1)
-          .max(4)
-          .optional()
-          .describe("Maximum number of examples to return."),
-      }),
-      execute: async ({ query, maxExamples }) => {
-        const selectedSlugs = selectReactEmailComponentExampleSlugs(
-          query,
-          maxExamples ?? 4,
-        );
-
-        const examples = await Promise.all(
-          selectedSlugs.map((slug) => readReactEmailComponentExample(slug)),
-        );
-
-        return {
-          success: true,
-          query,
-          examples: examples
-            .map((example) => {
-              const preferredFile =
-                example.files.find(
-                  (file) => file.variant === "inline-styles",
-                ) ?? example.files[0];
-
-              return {
-                slug: example.slug,
-                title: example.title,
-                categoryName: example.categoryName,
-                referenceFile: preferredFile?.fileName ?? null,
-                guidance:
-                  "Reuse the structure and component composition when relevant, but do not copy placeholder copy, asset paths, or branding literally.",
-                source: preferredFile ? clamp(preferredFile.source, 2200) : "",
-              };
-            })
-            .filter((example) => example.referenceFile !== null),
-        };
-      },
-    }),
     generate_email: tool({
       description:
-        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design and read_component_examples before using this tool for email requests. Pass name, description, and tsxCode. The system will normalize equivalent React Email source formats before compiling.",
+        "Generate a React Email template. Use this tool whenever the user asks you to create, modify, or update an email template. Call read_frontend_design before using this tool for email requests. Pass name, description, and tsxCode. The system will normalize equivalent React Email source formats before compiling.",
       inputSchema: generateEmailInputSchema,
       execute: async ({ name, description, tsxCode }) => {
         const normalizedName =
@@ -518,10 +468,6 @@ export async function POST(req: Request) {
       const designLoaded =
         !hasFrontendDesignSkill ||
         hasSuccessfulToolResult(steps, "read_frontend_design");
-      const examplesLoaded = hasSuccessfulToolResult(
-        steps,
-        "read_component_examples",
-      );
       const emailGenerated = hasSuccessfulToolResult(steps, "generate_email");
       const emailFailed = hasFailedToolResult(steps, "generate_email");
 
@@ -538,14 +484,6 @@ export async function POST(req: Request) {
           activeTools: ["read_frontend_design"],
           toolChoice: { type: "tool", toolName: "read_frontend_design" },
           system: `${systemPrompt}\n\nCurrent step: load the frontend-design skill and use it to decide the email's visual direction.`,
-        };
-      }
-
-      if (!examplesLoaded) {
-        return {
-          activeTools: ["read_component_examples"],
-          toolChoice: { type: "tool", toolName: "read_component_examples" },
-          system: `${systemPrompt}\n\nCurrent step: fetch the most relevant local React Email component examples for this request and use them as design references.`,
         };
       }
 
