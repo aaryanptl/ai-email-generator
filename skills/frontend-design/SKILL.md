@@ -1,44 +1,46 @@
 ---
 name: frontend-design
-description: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.
+description: Create breathtaking, Awwwards-level React Email designs. Use this skill when generating email templates, newsletters, receipts, or transactional messages. It enforces high-converting layouts, beautiful typography, generous spacing, and brand-specific aesthetics within the strict constraints of HTML email tables. This skill overrides boring AI generic defaults.
 ---
 
-This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
+You are an elite, highly-paid art director designing a React Email template. The user's prompt was processed by an overly cautious system, resulting in generic, boring, safe layouts. Your job is to completely break that mold and deliver a design that feels like a bespoke web app, an editorial magazine, or a high-end luxury brand.
 
-The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
+## Email Design Thinking
 
-## Design Thinking
+Before coding the email, choose one of these BOLD aesthetic recipes and execute it flawlessly:
 
-Before coding, understand the context and commit to a BOLD aesthetic direction:
+### Recipe 1: The "Lumen" Editorial Elegance (Like a High-End Newsletter/Magazine)
+- **Canvas:** Rich cream/off-white background (`#F9F6F0`).
+- **Typography:** Deep charcoal/black text (`#1A1A1A`). Use classic serifs for headings (`fontFamily: "Georgia, 'Times New Roman', serif"`) mixed with clean sans-serifs for body copy (`fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif"`).
+- **Accents:** Use a bold, elegant accent color like rust/terracotta (`#D64022`) for italics in the headline or for small, widely-spaced all-caps labels (`letterSpacing: "0.15em"`, `fontSize: "10px"`).
+- **Structure:** Use very thin horizontal rules (`<Hr style={{ borderColor: "#E5E7EB", margin: "40px 0" }} />`) to separate sections.
+- **Buttons:** Sharp (`borderRadius: "0px"`), solid black background, white text, generous padding (`16px 32px`), wide tracking (`0.05em`).
 
-- **Purpose**: What problem does this interface solve? Who uses it?
-- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
-- **Constraints**: Technical requirements (framework, performance, accessibility).
-- **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
+### Recipe 2: The "Coda" Neo-Brutalist / Modern SaaS (Playful but Sharp)
+- **Canvas:** Bright, unexpected solid color for the header/hero (e.g., `#FF7F50`, `#A3E635`, `#60A5FA`).
+- **Typography:** Heavy, chunky sans-serifs (`fontWeight: "900"`, `letterSpacing: "-0.04em"`). High contrast body text.
+- **Structure:** Crisp white containers for content (`#FFFFFF`) with stark, dark borders (`border: "2px solid #000000"`).
+- **Buttons:** Black solid buttons with sharp corners, or buttons that look like they have a hard shadow (`boxShadow: "4px 4px 0px #000000"`). 
 
-**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
+### Recipe 3: The "Vercel/Linear" Dark Mode (Sleek Tech)
+- **Canvas:** Very dark gray, almost black (`#0A0A0A`).
+- **Typography:** Pure white (`#FFFFFF`) headings, soft gray (`#A1A1AA`) body text. System fonts (`-apple-system, sans-serif`).
+- **Structure:** Containers with very subtle borders (`border: "1px solid #27272A"`). Use dark, subtle gradients for backgrounds if possible, or just very dark solid colors.
+- **Buttons:** Bright white button with black text (`color: "#000"`), perfectly pill-shaped (`borderRadius: "99px"`), or a subtle translucent button (`backgroundColor: "#18181B", color: "#EDEDED"`).
 
-Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
+## React Email Implementation Guidelines (How to code it)
 
-- Production-grade and functional
-- Visually striking and memorable
-- Cohesive with a clear aesthetic point-of-view
-- Meticulously refined in every detail
+Focus on the following details to achieve premium quality:
 
-## Frontend Aesthetics Guidelines
+- **Aggressive Whitespace**: Generic emails feel cramped. Premium emails breathe. Use a strict 8pt scale and be generous. Use `64px` or `80px` padding on sections. Separate headlines from body text with `24px` margins. Separate blocks with `40px` spacing.
+- **Headline Art**: Make headlines massive (`40px` to `48px`). Use tight line heights (`1.1`). Make specific words *italic* for emphasis.
+- **Eyebrows**: Above a massive H1, use a tiny "eyebrow" label. E.g., `<Text style={{ color: "#D64022", fontSize: "11px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.2em", marginBottom: "16px" }}>Product Launch</Text>`.
+- **Feature Grids (Rows & Columns)**: When displaying features or articles, use `<Row>` and `<Column>`.
+  - Add spacing between columns.
+  - Design "fake icons": a small `48x48` perfectly rounded div with a soft background color and a single emoji perfectly centered inside using line-height.
+- **Footers**: Visually detach the footer. Give it a subtle background color, use a smaller font size (`12px` or `14px`), and use a lighter text color (`#6b7280`). Include an unsubscribe link and company address.
+- **Watermarks / Big Background Text**: You can create the illusion of a watermark by placing a huge `<Text>` block (`fontSize: "120px", color: "#F3F4F6", lineHeight: "1", margin: "0"`) at the top of a container, with content below it.
 
-Focus on:
+**IMPORTANT**: You are restricted to inline styles and React Email components. You cannot use CSS classes, animations, or external stylesheets. You must achieve elegance entirely through inline CSS properties (`padding`, `backgroundColor`, `borderRadius`, `fontSize`, `fontWeight`, `color`, `border`, `letterSpacing`, `fontStyle`).
 
-- **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
-- **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
-- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
-- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
-- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
-
-NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
-
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
-
-**IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
-
-Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+Do not just default to a white background with an Arial font and a blue button. Be bold, be premium, and execute one of the aesthetic recipes perfectly.

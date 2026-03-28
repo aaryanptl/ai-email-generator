@@ -32,10 +32,10 @@ We will use a hybrid prompt architecture:
 
 ### Phase 1: Output Quality Foundation
 
-- [ ] Rewrite `lib/email-system-prompt.ts` with stricter design and copy guardrails.
-- [ ] Remove placeholder-first image behavior and define real-image rules.
-- [ ] Add hard rules for spacing scale, typography hierarchy, and button patterns.
-- [ ] Add explicit instructions for preserving structure during edit requests.
+- [x] Rewrite `lib/email-system-prompt.ts` with stricter design and copy guardrails.
+- [x] Remove placeholder-first image behavior and define real-image rules.
+- [x] Add hard rules for spacing scale, typography hierarchy, and button patterns.
+- [x] Add explicit instructions for preserving structure during edit requests.
 
 ### Phase 2: Real Images with Unsplash
 
@@ -94,6 +94,6 @@ We will use a hybrid prompt architecture:
 
 ## Immediate Next 3 Tasks
 
-- [ ] Finalize v1 master prompt draft.
+- [x] Finalize v1 master prompt draft.
 - [ ] Implement Unsplash tool in API route.
 - [ ] Ship 4 category starter chips in UI and wire prompt injection.

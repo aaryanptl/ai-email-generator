@@ -16,6 +16,13 @@ const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     baseURL: process.env.BETTER_AUTH_URL,
     secret: process.env.BETTER_AUTH_SECRET,
     database: authComponent.adapter(ctx),
+    session: {
+      cookieCache: {
+        enabled: true,
+        maxAge: 60 * 10,
+        refreshCache: true,
+      },
+    },
     socialProviders: {
       google: {
         clientId: process.env.GOOGLE_CLIENT_ID as string,

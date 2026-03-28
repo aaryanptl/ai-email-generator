@@ -12,5 +12,11 @@ export default async function ChatByIdPage({ params }: Props) {
     chatId,
   });
 
-  return <ChatShell initialChatId={chatId} initialMessages={initialMessages} />;
+  return (
+    <ChatShell
+      key={chatId}
+      initialChatId={chatId}
+      initialMessages={initialMessages}
+    />
+  );
 }

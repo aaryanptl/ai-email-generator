@@ -250,6 +250,46 @@ const getMessageText = (message: UIMessage) =>
     .filter(Boolean)
     .join("\n\n");
 
+const getMessageFiles = (message: UIMessage): FileUIPart[] =>
+  message.parts.flatMap((part) => {
+    if (part.type !== "file") {
+      return [];
+    }
+
+    return [
+      {
+        type: "file" as const,
+        filename: part.filename,
+        mediaType: part.mediaType,
+        url: part.url,
+      },
+    ];
+  });
+
+const buildSendMessagePayload = ({
+  text,
+  files,
+  messageId,
+}: {
+  text: string;
+  files: FileUIPart[];
+  messageId?: string;
+}) => {
+  const trimmedText = text.trim();
+
+  if (files.length > 0) {
+    if (trimmedText) {
+      return messageId
+        ? { text: trimmedText, files, messageId }
+        : { text: trimmedText, files };
+    }
+
+    return messageId ? { files, messageId } : { files };
+  }
+
+  return messageId ? { text: trimmedText, messageId } : { text: trimmedText };
+};
+
 export function ChatPanel({
   chatId,
   initialMessages,
@@ -262,6 +302,8 @@ export function ChatPanel({
   const [selectedModel, setSelectedModel] =
     useState<ChatModelId>(DEFAULT_CHAT_MODEL);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [hasPendingStop, setHasPendingStop] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const dailyPromptStatus = useQuery(api.usage.getDailyPromptStatus, {}) as
     | DailyPromptStatus
     | undefined;
@@ -294,10 +336,11 @@ export function ChatPanel({
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
+  const isAssistantStreaming = isStreaming && !hasPendingStop;
 
   useEffect(() => {
-    onStatusChange?.(isStreaming);
-  }, [isStreaming, onStatusChange]);
+    onStatusChange?.(isAssistantStreaming);
+  }, [isAssistantStreaming, onStatusChange]);
 
   useEffect(() => {
     try {
@@ -342,10 +385,29 @@ export function ChatPanel({
   }, [messages, onEmailGenerated]);
 
   const displayMessages = useDisplayMessages(messages);
+  const editingMessage = useMemo(
+    () =>
+      editingMessageId
+        ? messages.find(
+            (message) =>
+              message.id === editingMessageId && message.role === "user",
+          ) ?? null
+        : null,
+    [editingMessageId, messages],
+  );
+  const editingMessageFiles = useMemo(
+    () => (editingMessage ? getMessageFiles(editingMessage) : []),
+    [editingMessage],
+  );
 
   const handleSubmit = (message: PromptInputMessage) => {
-    const hasText = Boolean(message.text.trim());
-    const hasAttachments = message.files.length > 0;
+    const text = message.text.trim();
+    const files =
+      editingMessageFiles.length > 0
+        ? [...editingMessageFiles, ...message.files]
+        : message.files;
+    const hasText = Boolean(text);
+    const hasAttachments = files.length > 0;
 
     if (hasReachedDailyLimit) {
       toast.error("Daily limit reached", {
@@ -363,12 +425,17 @@ export function ChatPanel({
       onEnsureChatPath(chatId);
     }
 
-    sendMessage({
-      text: hasText ? message.text : "Attached files for context",
-      files: message.files,
-    });
+    setHasPendingStop(false);
+    void sendMessage(
+      buildSendMessagePayload({
+        text: hasText ? text : "Attached files for context",
+        files,
+        messageId: editingMessage?.id,
+      }),
+    );
     setChatError(null);
     setInput("");
+    setEditingMessageId(null);
   };
 
   const handleModelSelection = (value: string) => {
@@ -395,31 +462,55 @@ export function ChatPanel({
   }, []);
 
   const handleEditUserMessage = useCallback((message: UIMessage) => {
+    setEditingMessageId(message.id);
     setInput(getMessageText(message));
   }, []);
 
   const handleResendUserMessage = useCallback(
     (message: UIMessage) => {
       const text = getMessageText(message);
+      const files = getMessageFiles(message);
 
-      if (!text || isStreaming) {
+      if ((!text && files.length === 0) || isStreaming) {
         return;
       }
 
-      sendMessage({ text });
+      setHasPendingStop(false);
+      void sendMessage(
+        buildSendMessagePayload({
+          text,
+          files,
+          messageId: message.id,
+        }),
+      );
       setChatError(null);
+      setEditingMessageId(null);
     },
     [isStreaming, sendMessage],
   );
 
-  const handleRetryAssistantMessage = useCallback(() => {
-    if (isStreaming) {
-      return;
-    }
+  const handleRetryAssistantMessage = useCallback(
+    (message: UIMessage) => {
+      if (isStreaming) {
+        return;
+      }
 
-    void regenerate();
-    setChatError(null);
-  }, [isStreaming, regenerate]);
+      setHasPendingStop(false);
+      void regenerate({ messageId: message.id });
+      setChatError(null);
+      setEditingMessageId(null);
+    },
+    [isStreaming, regenerate],
+  );
+
+  const handleCancelEditing = useCallback(() => {
+    setEditingMessageId(null);
+  }, []);
+
+  const handleStopStreaming = useCallback(() => {
+    setHasPendingStop(true);
+    stop();
+  }, [stop]);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
@@ -515,13 +606,15 @@ export function ChatPanel({
                   .join("\n\n");
                 const messageText = getMessageText(message);
                 const lastPart = message.parts.at(-1);
-                const isReasoningStreaming =
-                  messageIndex === displayMessages.length - 1 &&
-                  isStreaming &&
-                  lastPart?.type === "reasoning";
-                const isLastAssistantMessage =
+                const isLiveAssistantMessage =
                   message.role === "assistant" &&
                   messageIndex === displayMessages.length - 1;
+                const isReasoningStreaming =
+                  isLiveAssistantMessage &&
+                  isAssistantStreaming &&
+                  lastPart?.type === "reasoning";
+                const isLastAssistantMessage =
+                  isLiveAssistantMessage;
                 const showMessageActions =
                   message.role === "user" || !isStreaming;
 
@@ -542,7 +635,10 @@ export function ChatPanel({
                       ) : null}
 
                       {toolParts.length > 0 ? (
-                        <ToolTrace parts={toolParts} />
+                        <ToolTrace
+                          parts={toolParts}
+                          isLive={isLiveAssistantMessage && isAssistantStreaming}
+                        />
                       ) : null}
 
                       {message.parts.map((part, index) => {
@@ -566,7 +662,7 @@ export function ChatPanel({
                       })}
                     </MessageContent>
 
-                    {isStreaming && message.role === "assistant" ? (
+                    {isAssistantStreaming && isLiveAssistantMessage ? (
                       <Message from="assistant">
                         <MessageContent>
                           <Shimmer>Thinking...</Shimmer>
@@ -628,7 +724,9 @@ export function ChatPanel({
                               aria-label="Retry assistant response"
                               disabled={!isLastAssistantMessage || isStreaming}
                               label="Retry"
-                              onClick={handleRetryAssistantMessage}
+                              onClick={() =>
+                                handleRetryAssistantMessage(message)
+                              }
                               tooltip={
                                 isLastAssistantMessage
                                   ? "Retry"
@@ -663,6 +761,23 @@ export function ChatPanel({
           maxFileSize={10 * 1024 * 1024}
         >
           <PromptInputHeader>
+            {editingMessage ? (
+              <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                <span className="min-w-0 flex-1 leading-relaxed">
+                  Editing a previous message. Sending will replace that turn and
+                  remove every reply after it.
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 rounded-lg px-2 text-xs"
+                  onClick={handleCancelEditing}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
             <PromptInputAttachmentsInline />
           </PromptInputHeader>
           <PromptInputBody>
@@ -721,7 +836,7 @@ export function ChatPanel({
               input={input}
               status={status}
               blocked={hasReachedDailyLimit}
-              onStop={stop}
+              onStop={handleStopStreaming}
             />
           </PromptInputFooter>
         </PromptInput>

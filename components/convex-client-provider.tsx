@@ -1,12 +1,17 @@
 "use client";
 
+import { createContext, ReactNode, useContext } from "react";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient } from "convex/react";
-import { ReactNode } from "react";
 import { authClient } from "@/lib/auth-client";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
+const AuthBootstrapContext = createContext({ hasInitialToken: false });
+
+export function useAuthBootstrap() {
+  return useContext(AuthBootstrapContext);
+}
 
 export function ConvexClientProvider({
   children,
@@ -15,14 +20,25 @@ export function ConvexClientProvider({
   children: ReactNode;
   initialToken?: string | null;
 }) {
-  if (!convex) return <>{children}</>;
+  const hasInitialToken = Boolean(initialToken);
+
+  if (!convex) {
+    return (
+      <AuthBootstrapContext.Provider value={{ hasInitialToken }}>
+        {children}
+      </AuthBootstrapContext.Provider>
+    );
+  }
+
   return (
-    <ConvexBetterAuthProvider
-      client={convex}
-      authClient={authClient}
-      initialToken={initialToken ?? undefined}
-    >
-      {children}
-    </ConvexBetterAuthProvider>
+    <AuthBootstrapContext.Provider value={{ hasInitialToken }}>
+      <ConvexBetterAuthProvider
+        client={convex}
+        authClient={authClient}
+        initialToken={initialToken ?? undefined}
+      >
+        {children}
+      </ConvexBetterAuthProvider>
+    </AuthBootstrapContext.Provider>
   );
 }

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import type { UIMessage } from "ai";
 import { PanelLeftOpen } from "lucide-react";
 import { ChatPanel, EmailData } from "@/components/chat-panel";
 import { ArtifactPanel, EmailArtifact } from "@/components/artifact-panel";
+import { useAuthBootstrap } from "@/components/convex-client-provider";
 import { HistorySidebar, type HistoryChat } from "@/components/history-sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +31,8 @@ interface ChatShellProps {
   initialMessages?: UIMessage[];
 }
 
+const createChatId = () => `chat_${crypto.randomUUID()}`;
+
 export function ChatShell({
   initialChatId,
   initialMessages = [],
@@ -37,14 +40,13 @@ export function ChatShell({
   const layoutBreakpoint = "(min-width: 880px)";
   const dockedSidebarBreakpoint = "(min-width: 1100px)";
   const router = useRouter();
-  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const { hasInitialToken } = useAuthBootstrap();
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
+  const { data: session } = authClient.useSession();
+  const canUseAuthenticatedData = isAuthenticated || hasInitialToken;
 
-  const bootChatId = useMemo(() => {
-    return initialChatId ?? `chat_${crypto.randomUUID()}`;
-  }, [initialChatId]);
-
-  const [chatId, setChatId] = useState(bootChatId);
-  const [hasPersistedPath, setHasPersistedPath] = useState(
+  const [chatId, setChatId] = useState(() => initialChatId ?? createChatId());
+  const [hasPersistedPath, setHasPersistedPath] = useState(() =>
     Boolean(initialChatId),
   );
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
@@ -54,15 +56,20 @@ export function ChatShell({
   const [activePanel, setActivePanel] = useState<"chat" | "preview">("chat");
   const [isDesktop, setIsDesktop] = useState(false);
   const [isHistoryDockedDesktop, setIsHistoryDockedDesktop] = useState(false);
+  const [isViewportReady, setIsViewportReady] = useState(false);
   const [isChatStreaming, setIsChatStreaming] = useState(false);
 
   const upsertUser = useMutation(api.users.upsertFromSession);
   const deleteChat = useMutation(api.chats.remove);
 
-  const chats = useQuery(api.chats.list, session ? {} : "skip");
+  const currentUser = useQuery(
+    api.users.current,
+    canUseAuthenticatedData ? {} : "skip",
+  );
+  const chats = useQuery(api.chats.list, canUseAuthenticatedData ? {} : "skip");
   const latestEmail = useQuery(
     api.emails.getLatestForChat,
-    session && hasPersistedPath ? { chatId } : "skip",
+    canUseAuthenticatedData && hasPersistedPath ? { chatId } : "skip",
   );
 
   const historyChats = useMemo<HistoryChat[]>(() => {
@@ -113,6 +120,10 @@ export function ChatShell({
   }, [latestEmail, previewEmail]);
 
   const showDockedHistory = isHistoryDockedDesktop && historyDockedOpen;
+  const userEmail =
+    currentUser?.email ?? session?.user.email ?? "Signed in";
+  const userName = currentUser?.name ?? session?.user.name ?? undefined;
+  const userImage = currentUser?.image ?? session?.user.image ?? null;
 
   const handleGoogleSignIn = useCallback(async () => {
     await authClient.signIn.social({
@@ -190,7 +201,7 @@ export function ChatShell({
     setPreviewEmail(null);
     setCompilationError(null);
     setActivePanel("chat");
-    const nextChatId = `chat_${crypto.randomUUID()}`;
+    const nextChatId = createChatId();
     setChatId(nextChatId);
     setHasPersistedPath(false);
     window.history.replaceState({}, "", "/chat");
@@ -206,28 +217,40 @@ export function ChatShell({
   }, [dockedSidebarBreakpoint]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(layoutBreakpoint);
+    const layoutMediaQuery = window.matchMedia(layoutBreakpoint);
+    const dockedMediaQuery = window.matchMedia(dockedSidebarBreakpoint);
+
     const update = () => {
-      setIsDesktop(mediaQuery.matches);
+      setIsDesktop(layoutMediaQuery.matches);
+      setIsHistoryDockedDesktop(dockedMediaQuery.matches);
+      setIsViewportReady(true);
     };
 
     update();
-    mediaQuery.addEventListener("change", update);
-    return () => mediaQuery.removeEventListener("change", update);
-  }, [layoutBreakpoint]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(dockedSidebarBreakpoint);
-    const update = () => {
-      setIsHistoryDockedDesktop(mediaQuery.matches);
+    layoutMediaQuery.addEventListener("change", update);
+    dockedMediaQuery.addEventListener("change", update);
+    return () => {
+      layoutMediaQuery.removeEventListener("change", update);
+      dockedMediaQuery.removeEventListener("change", update);
     };
+  }, [dockedSidebarBreakpoint, layoutBreakpoint]);
 
-    update();
-    mediaQuery.addEventListener("change", update);
-    return () => mediaQuery.removeEventListener("change", update);
-  }, [dockedSidebarBreakpoint]);
+  if (!isViewportReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <Card className="w-full max-w-sm border-border/70 bg-card/80 backdrop-blur">
+          <CardHeader>
+            <CardTitle>Preparing workspace</CardTitle>
+            <CardDescription>
+              Loading the correct layout for your device.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
-  if (sessionPending) {
+  if (authLoading && !hasInitialToken) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
         <Card className="w-full max-w-sm border-border/70 bg-card/80 backdrop-blur">
@@ -242,7 +265,7 @@ export function ChatShell({
     );
   }
 
-  if (!session) {
+  if (!canUseAuthenticatedData) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-muted/40 px-6 py-10">
         <Card className="w-full max-w-md border-border/70 bg-card/90 backdrop-blur">
@@ -272,9 +295,9 @@ export function ChatShell({
         activeChatId={hasPersistedPath ? chatId : undefined}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
-        userEmail={session.user.email ?? "Signed in"}
-        userName={session.user.name ?? undefined}
-        userImage={session.user.image ?? null}
+        userEmail={userEmail}
+        userName={userName}
+        userImage={userImage}
         onSignOut={() => void handleSignOut()}
         onNewChat={handleNewChat}
       />
@@ -298,14 +321,13 @@ export function ChatShell({
 
           <ResizablePanelGroup
             id="chat-layout"
-            direction="horizontal"
+            orientation="horizontal"
             className="h-full w-full min-w-0"
           >
             {isHistoryDockedDesktop && historyDockedOpen ? (
               <>
                 <ResizablePanel
                   id="history-panel"
-                  order={1}
                   defaultSize={10}
                   minSize={15}
                   maxSize={25}
@@ -317,9 +339,9 @@ export function ChatShell({
                     activeChatId={hasPersistedPath ? chatId : undefined}
                     onSelectChat={handleSelectChat}
                     onDeleteChat={handleDeleteChat}
-                    userEmail={session.user.email ?? "Signed in"}
-                    userName={session.user.name ?? undefined}
-                    userImage={session.user.image ?? null}
+                    userEmail={userEmail}
+                    userName={userName}
+                    userImage={userImage}
                     onSignOut={() => void handleSignOut()}
                     onNewChat={handleNewChat}
                   />
@@ -330,7 +352,6 @@ export function ChatShell({
 
             <ResizablePanel
               id="chat-panel"
-              order={showDockedHistory ? 2 : 1}
               defaultSize={showDockedHistory ? 35 : 40}
               minSize={20}
               maxSize={70}
@@ -350,7 +371,6 @@ export function ChatShell({
 
             <ResizablePanel
               id="preview-panel"
-              order={showDockedHistory ? 3 : 2}
               defaultSize={showDockedHistory ? 45 : 60}
               minSize={20}
               maxSize={70}

@@ -37,6 +37,10 @@ function getToolState(part: ToolPart) {
     : "unknown";
 }
 
+function isRunningToolState(state: string) {
+  return state === "input-streaming" || state === "input-available";
+}
+
 function getToolStateMeta(state: string) {
   switch (state) {
     case "input-streaming":
@@ -139,7 +143,13 @@ function stringifyDetail(value: unknown) {
   }
 }
 
-function ToolTraceRow({ part, index }: { part: ToolPart; index: number }) {
+function ToolTraceRow({
+  part,
+  isLive,
+}: {
+  part: ToolPart;
+  isLive: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const toolName = getToolName(part);
   const state = getToolState(part);
@@ -168,7 +178,12 @@ function ToolTraceRow({ part, index }: { part: ToolPart; index: number }) {
               meta.iconTone,
             )}
           >
-            <Icon className={cn("size-3", meta.spin && "animate-spin")} />
+            <Icon
+              className={cn(
+                "size-3",
+                meta.spin && isLive && "animate-spin",
+              )}
+            />
           </span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13px] font-medium text-foreground">
@@ -234,14 +249,20 @@ function ToolTraceRow({ part, index }: { part: ToolPart; index: number }) {
   );
 }
 
-export function ToolTrace({ parts }: { parts: ToolPart[] }) {
+export function ToolTrace({
+  parts,
+  isLive = false,
+}: {
+  parts: ToolPart[];
+  isLive?: boolean;
+}) {
   const summary = useMemo(() => {
     const completed = parts.filter(
       (part) => getToolState(part) === "output-available",
     ).length;
-    const running = parts.filter((part) =>
-      ["input-streaming", "input-available"].includes(getToolState(part)),
-    ).length;
+    const running = isLive
+      ? parts.filter((part) => isRunningToolState(getToolState(part))).length
+      : 0;
     const errored = parts.filter((part) =>
       ["output-error", "output-denied"].includes(getToolState(part)),
     ).length;
@@ -255,7 +276,7 @@ export function ToolTrace({ parts }: { parts: ToolPart[] }) {
     return `Used ${completed || parts.length} ${
       parts.length === 1 ? "tool" : "tools"
     }`;
-  }, [parts]);
+  }, [isLive, parts]);
 
   return (
     <div className="mb-3 space-y-1.5">
@@ -265,7 +286,11 @@ export function ToolTrace({ parts }: { parts: ToolPart[] }) {
       </div>
       <div className="space-y-1.5">
         {parts.map((part, index) => (
-          <ToolTraceRow key={`${part.type}-${index}`} part={part} index={index} />
+          <ToolTraceRow
+            key={`${part.type}-${index}`}
+            part={part}
+            isLive={isLive}
+          />
         ))}
       </div>
     </div>

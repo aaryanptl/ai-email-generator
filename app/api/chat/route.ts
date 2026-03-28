@@ -1,4 +1,5 @@
 import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
+import { fetchMutation, fetchQuery } from "convex/nextjs";
 import { z } from "zod";
 import {
   DEFAULT_CHAT_MODEL,
@@ -14,7 +15,7 @@ import {
   readSkill,
 } from "@/lib/skills";
 import { openrouter } from "@/lib/openrouter";
-import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
+import { getToken } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
 export const maxDuration = 60;
@@ -234,34 +235,94 @@ const getToolResults = (steps: unknown[]): StepToolResult[] => {
   return results;
 };
 
-const hasSuccessfulToolResult = (steps: unknown[], toolName: string): boolean =>
-  getToolResults(steps).some((result) => {
-    if (result.toolName !== toolName) {
-      return false;
+const getLatestToolSuccessState = (
+  steps: unknown[],
+  toolName: string,
+): boolean | null => {
+  const latestResult = [...getToolResults(steps)]
+    .reverse()
+    .find((result) => result.toolName === toolName);
+
+  if (!latestResult) {
+    return null;
+  }
+
+  const output = latestResult.output;
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    "success" in output &&
+    typeof (output as { success?: unknown }).success === "boolean"
+  ) {
+    return (output as { success: boolean }).success;
+  }
+
+  return null;
+};
+
+const buildPlanBrief = (latestUserText: string) => ({
+  success: true,
+  goal:
+    clamp(
+      latestUserText.replace(/\s+/g, " ").trim() ||
+        "Generate a clear, high-converting email.",
+      140,
+    ) || "Generate a clear, high-converting email.",
+  audience: "Recipient described in the user's request.",
+  tone: "Match the user's requested tone and level of formality.",
+  visualDirection:
+    "Choose a distinctive visual direction that fits the request and brand intent.",
+  primaryCta: "Use the main action implied by the request.",
+  sections: ["Preview", "Hero", "Body", "Primary CTA", "Footer"],
+});
+
+type StoredMessage = {
+  id?: string;
+  role?: unknown;
+  parts: unknown[];
+  createdAt?: unknown;
+};
+
+const safeJsonClone = <T,>(value: T, fallback: T): T => {
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeMessagesForStorage = (
+  chatId: string,
+  messages: unknown[],
+): StoredMessage[] =>
+  messages.flatMap((message, index) => {
+    if (typeof message !== "object" || message === null) {
+      return [];
     }
 
-    const output = result.output;
-    return (
-      typeof output === "object" &&
-      output !== null &&
-      "success" in output &&
-      (output as { success?: unknown }).success === true
-    );
-  });
+    const row = message as {
+      id?: unknown;
+      role?: unknown;
+      parts?: unknown;
+      createdAt?: unknown;
+    };
 
-const hasFailedToolResult = (steps: unknown[], toolName: string): boolean =>
-  getToolResults(steps).some((result) => {
-    if (result.toolName !== toolName) {
-      return false;
-    }
-
-    const output = result.output;
-    return (
-      typeof output === "object" &&
-      output !== null &&
-      "success" in output &&
-      (output as { success?: unknown }).success === false
-    );
+    return [
+      {
+        id:
+          typeof row.id === "string" && row.id.length > 0
+            ? row.id
+            : `${chatId}-${index}`,
+        role: row.role,
+        parts: safeJsonClone(Array.isArray(row.parts) ? row.parts : [], []),
+        createdAt:
+          typeof row.createdAt === "number" ||
+          typeof row.createdAt === "string" ||
+          row.createdAt instanceof Date
+            ? row.createdAt
+            : undefined,
+      },
+    ];
   });
 
 export async function POST(req: Request) {
@@ -271,6 +332,11 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid request payload" }, { status: 400 });
   }
 
+  const authToken = await getToken();
+  const convexAuthOptions = {
+    token: authToken ?? undefined,
+  };
+
   const selectedModel =
     typeof model === "string" && isChatModelId(model)
       ? model
@@ -278,7 +344,11 @@ export async function POST(req: Request) {
   const hasImageInput = messagesHaveImageInput(messages);
   const resolvedModel = resolveModelForRequest(selectedModel, hasImageInput);
 
-  const dailyUsage = await fetchAuthMutation(api.usage.consumeDailyPrompt, {});
+  const dailyUsage = await fetchMutation(
+    api.usage.consumeDailyPrompt,
+    {},
+    convexAuthOptions,
+  );
   if (!dailyUsage.allowed) {
     return Response.json(
       {
@@ -288,9 +358,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const uploadedImages = await fetchAuthQuery(api.images.listByChatId, {
-    chatId: id,
-  });
+  const uploadedImages = await fetchQuery(
+    api.images.listByChatId,
+    {
+      chatId: id,
+    },
+    convexAuthOptions,
+  );
 
   const imageContext = uploadedImages
     .filter((image: { url: string | null }) => typeof image.url === "string")
@@ -321,11 +395,11 @@ export async function POST(req: Request) {
 
   const designRequestPromptSection =
     hasFrontendDesignSkill && isEmailGenerationRequest(latestUserText)
-      ? "\n\nThe latest user request is asking for an email. You must first call plan_email, then call read_frontend_design, and only then call generate_email."
+      ? "\n\nThe latest user request is asking for an email. You must first call plan_email with no arguments, then call read_frontend_design, and only then call generate_email."
       : "";
   const requiresToolExecution = isEmailGenerationRequest(latestUserText);
   const toolCompletionPromptSection = requiresToolExecution
-    ? '\n\nRequired workflow for email requests:\n1. Call plan_email to summarize the request into a brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call generate_email with the complete template code.\n4. If generate_email returns success: false, revise the code and call generate_email again.\n5. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
+    ? '\n\nRequired workflow for email requests:\n1. Call plan_email with no arguments to create a short brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call generate_email with the complete template code.\n4. If generate_email returns success: false, revise the code and call generate_email again.\n5. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
     : "";
 
   const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
@@ -333,45 +407,9 @@ export async function POST(req: Request) {
   const tools = {
     plan_email: tool({
       description:
-        "Create a concise implementation brief for the requested email before any design or code generation work begins.",
-      inputSchema: z.object({
-        goal: z
-          .string()
-          .optional()
-          .describe("The primary business goal of the email."),
-        audience: z
-          .string()
-          .optional()
-          .describe("The intended audience for the email."),
-        tone: z.string().optional().describe("The writing tone for the email."),
-        visualDirection: z
-          .string()
-          .optional()
-          .describe("A concise visual direction for the design."),
-        primaryCta: z
-          .string()
-          .optional()
-          .describe("The main call to action for the email."),
-        sections: z
-          .array(z.string())
-          .optional()
-          .describe("Ordered list of sections to include in the email."),
-      }),
-      execute: async (input) => ({
-        success: true,
-        goal: input.goal?.trim() || "Generate a clear, high-converting email.",
-        audience:
-          input.audience?.trim() || "The intended recipient of the email.",
-        tone: input.tone?.trim() || "Clear, credible, and concise.",
-        visualDirection:
-          input.visualDirection?.trim() ||
-          "Modern editorial layout with strong hierarchy and a single prominent CTA.",
-        primaryCta:
-          input.primaryCta?.trim() || "Review the main call to action.",
-        sections: input.sections?.filter(
-          (section) => section.trim().length > 0,
-        ) ?? ["Preview", "Hero", "Body content", "Primary CTA", "Footer"],
-      }),
+        "Create a concise implementation brief for the requested email before any design or code generation work begins. Call this tool with no arguments.",
+      inputSchema: z.object({}).passthrough(),
+      execute: async () => buildPlanBrief(latestUserText),
     }),
     read_frontend_design: tool({
       description:
@@ -464,18 +502,17 @@ export async function POST(req: Request) {
         return undefined;
       }
 
-      const planned = hasSuccessfulToolResult(steps, "plan_email");
+      const planned = getLatestToolSuccessState(steps, "plan_email") === true;
       const designLoaded =
         !hasFrontendDesignSkill ||
-        hasSuccessfulToolResult(steps, "read_frontend_design");
-      const emailGenerated = hasSuccessfulToolResult(steps, "generate_email");
-      const emailFailed = hasFailedToolResult(steps, "generate_email");
+        getLatestToolSuccessState(steps, "read_frontend_design") === true;
+      const emailStatus = getLatestToolSuccessState(steps, "generate_email");
 
       if (!planned) {
         return {
           activeTools: ["plan_email"],
           toolChoice: { type: "tool", toolName: "plan_email" },
-          system: `${systemPrompt}\n\nCurrent step: create the brief first. Do not call any other tool yet.`,
+          system: `${systemPrompt}\n\nCurrent step: create the brief first. Call plan_email with no arguments. Do not call any other tool yet.`,
         };
       }
 
@@ -487,7 +524,7 @@ export async function POST(req: Request) {
         };
       }
 
-      if (!emailGenerated || emailFailed) {
+      if (emailStatus !== true) {
         return {
           activeTools: ["generate_email"],
           toolChoice: { type: "tool", toolName: "generate_email" },
@@ -508,69 +545,83 @@ export async function POST(req: Request) {
     originalMessages: messages,
     sendReasoning: true,
     onFinish: async ({ messages: responseMessages }) => {
-      const saved = await fetchAuthMutation(api.messages.saveChatMessages, {
-        chatId: id,
-        messages: responseMessages,
-      });
-
-      const insertedByMessageId = new Map(
-        saved.inserted.map((item: { id: string; dbId: string }) => [
-          item.id,
-          item.dbId,
-        ]),
-      );
-
-      for (const row of saved.inserted) {
-        if (row.role !== "assistant") {
-          continue;
-        }
-
-        for (const part of row.parts) {
-          if (
-            typeof part !== "object" ||
-            part === null ||
-            !("output" in part)
-          ) {
-            continue;
-          }
-
-          const output = (part as { output?: unknown }).output;
-          if (typeof output !== "object" || output === null) {
-            continue;
-          }
-
-          const email = output as {
-            success?: unknown;
-            name?: unknown;
-            description?: unknown;
-            tsxCode?: unknown;
-            htmlCode?: unknown;
-          };
-
-          if (
-            email.success !== true ||
-            typeof email.name !== "string" ||
-            typeof email.description !== "string" ||
-            typeof email.tsxCode !== "string" ||
-            typeof email.htmlCode !== "string"
-          ) {
-            continue;
-          }
-
-          const assistantMessageId = insertedByMessageId.get(row.id);
-          if (!assistantMessageId) {
-            continue;
-          }
-
-          await fetchAuthMutation(api.emails.createLinked, {
+      try {
+        const storedMessages = normalizeMessagesForStorage(id, responseMessages);
+        const saved = await fetchMutation(
+          api.messages.saveChatMessages,
+          {
             chatId: id,
-            assistantMessageId: assistantMessageId as never,
-            name: email.name,
-            description: email.description,
-            tsxCode: email.tsxCode,
-            htmlCode: email.htmlCode,
-          });
+            messages: storedMessages,
+          },
+          convexAuthOptions,
+        );
+
+        const insertedByMessageId = new Map(
+          saved.inserted.map((item: { id: string; dbId: string }) => [
+            item.id,
+            item.dbId,
+          ]),
+        );
+
+        for (const row of saved.inserted) {
+          if (row.role !== "assistant") {
+            continue;
+          }
+
+          for (const part of row.parts) {
+            if (
+              typeof part !== "object" ||
+              part === null ||
+              !("output" in part)
+            ) {
+              continue;
+            }
+
+            const output = (part as { output?: unknown }).output;
+            if (typeof output !== "object" || output === null) {
+              continue;
+            }
+
+            const email = output as {
+              success?: unknown;
+              name?: unknown;
+              description?: unknown;
+              tsxCode?: unknown;
+              htmlCode?: unknown;
+            };
+
+            if (
+              email.success !== true ||
+              typeof email.name !== "string" ||
+              typeof email.description !== "string" ||
+              typeof email.tsxCode !== "string" ||
+              typeof email.htmlCode !== "string"
+            ) {
+              continue;
+            }
+
+            const assistantMessageId = insertedByMessageId.get(row.id);
+            if (!assistantMessageId) {
+              continue;
+            }
+
+            await fetchMutation(
+              api.emails.createLinked,
+              {
+                chatId: id,
+                assistantMessageId: assistantMessageId as never,
+                name: email.name,
+                description: email.description,
+                tsxCode: email.tsxCode,
+                htmlCode: email.htmlCode,
+              },
+              convexAuthOptions,
+            );
+          }
         }
+      } catch (error) {
+        // Persisting chat history should not tear down a successful streamed reply.
+        console.error("Failed to persist streamed chat response.", error);
       }
     },
   });
