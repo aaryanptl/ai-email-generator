@@ -194,6 +194,14 @@ const isEmailGenerationRequest = (text: string): boolean => {
 	);
 };
 
+const requestExplicitlyUsesUploadedImage = (text: string): boolean => {
+	const normalized = text.toLowerCase();
+
+	return /use (the|this|that|my)? ?(attached|uploaded|reference)? ?(image|photo|picture|logo|asset)|include (the|this|that|my)? ?(attached|uploaded|reference)? ?(image|photo|picture|logo|asset)|based on (the|this|that|my)? ?(attached|uploaded|reference)? ?(image|photo|picture|logo|asset)|with (the|this|that|my)? ?(attached|uploaded|reference)? ?(image|photo|picture|logo|asset)|from (the|this|that|my)? ?(attached|uploaded|reference)? ?(image|photo|picture|logo|asset)/i.test(
+		normalized,
+	);
+};
+
 type StepToolResult = {
 	toolName?: unknown;
 	output?: unknown;
@@ -349,27 +357,11 @@ export async function POST(req: Request) {
 		);
 	}
 
-	const uploadedImages = await fetchQuery(
-		api.images.listByChatId,
-		{
-			chatId: id,
-		},
-		convexAuthOptions,
-	);
-
-	const imageContext = uploadedImages
-		.filter((image: { url: string | null }) => typeof image.url === "string")
-		.map(
-			(image: { fileName: string; url: string | null }) =>
-				`- ${image.fileName}: ${image.url as string}`,
-		)
-		.join("\n");
-
-	const imagePromptSection = imageContext
-		? `\n\nUploaded images for this chat:\n${imageContext}\n\nIf the user asks for logos, illustrations, product images, avatars, hero images, icons, or card art, prefer these uploaded image URLs over placeholders.`
-		: "";
-
 	const latestUserText = extractLatestUserText(messages);
+	const shouldUseUploadedImagesInEmail =
+		isEmailGenerationRequest(latestUserText) &&
+		requestExplicitlyUsesUploadedImage(latestUserText);
+
 	const skillCatalog = await listSkills();
 	const hasFrontendDesignSkill = skillCatalog.some(
 		(skill) => skill.slug === "frontend-design",
@@ -389,11 +381,14 @@ export async function POST(req: Request) {
 			? "\n\nThe latest user request is asking for an email. You must first call plan_email with no arguments, then call read_frontend_design, and only then call generate_email."
 			: "";
 	const requiresToolExecution = isEmailGenerationRequest(latestUserText);
+	const uploadedImageToolPromptSection = shouldUseUploadedImagesInEmail
+		? "\n\nThe user wants the attached/uploaded image used in the email itself. Before generate_email, you must call get_uploaded_images_for_email to fetch the hosted image URLs, then use those exact URLs in real <Img /> elements. Do not invent asset URLs or use placeholders."
+		: "\n\nIf the user only attached an image for visual reference or inspiration, do not call get_uploaded_images_for_email. In that case, use the attachment only as design/content reference and do not force it into the final email markup.";
 	const toolCompletionPromptSection = requiresToolExecution
-		? '\n\nRequired workflow for email requests:\n1. Call plan_email with no arguments to create a short brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. Call generate_email with the complete template code.\n4. If generate_email returns success: false, revise the code and call generate_email again.\n5. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
+		? '\n\nRequired workflow for email requests:\n1. Call plan_email with no arguments to create a short brief.\n2. Call read_frontend_design when available to decide the visual direction.\n3. If and only if the user explicitly wants an attached/uploaded image used in the email, call get_uploaded_images_for_email before generate_email.\n4. Call generate_email with the complete template code.\n5. If generate_email returns success: false, revise the code and call generate_email again.\n6. Only after generate_email returns success: true, send a short final response.\n\nCode generation requirements:\n- Import React Email primitives from require("@react-email/components").\n- Do not define local stub components for Preview, Html, Head, Body, Container, Section, Row, Column, Text, Heading, Link, Button, Img, Hr, or Font.\n- Preview must be the real @react-email/components Preview component so preview text stays hidden and does not render visibly at the top of the email.\n\nFinal response format:\n- One short sentence confirming what was generated.\n- One short sentence summarizing the chosen design direction.\n- One short question or next-step suggestion.\n\nDo not output a long explanation or checklist for successful email generations.'
 		: "";
 
-	const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${imagePromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
+	const systemPrompt = `${EMAIL_SYSTEM_PROMPT}${uploadedImageToolPromptSection}${skillsPromptSection}${designRequestPromptSection}${toolCompletionPromptSection}`;
 
 	const tools = {
 		plan_email: tool({
@@ -427,6 +422,49 @@ export async function POST(req: Request) {
 								: "Failed to read skill file.",
 					};
 				}
+			},
+		}),
+		get_uploaded_images_for_email: tool({
+			description:
+				"Fetch hosted Convex image URLs for the current chat so they can be embedded in the generated email with real <Img /> elements. Only call this when the user explicitly wants the attached/uploaded image used in the email output itself.",
+			inputSchema: z.object({}).passthrough(),
+			execute: async () => {
+				const uploadedImages = await fetchQuery(
+					api.images.listByChatId,
+					{
+						chatId: id,
+					},
+					convexAuthOptions,
+				);
+
+				const usableImages = uploadedImages
+					.filter(
+						(image: { url: string | null }) => typeof image.url === "string",
+					)
+					.map(
+						(image: {
+							id: string;
+							fileName: string;
+							url: string | null;
+							contentType: string;
+							sizeBytes: number;
+						}) => ({
+							id: image.id,
+							fileName: image.fileName,
+							url: image.url as string,
+							contentType: image.contentType,
+							sizeBytes: image.sizeBytes,
+						}),
+					);
+
+				return {
+					success: usableImages.length > 0,
+					images: usableImages,
+					instruction:
+						usableImages.length > 0
+							? "Use these exact hosted URLs in <Img /> elements when generating the email."
+							: "No hosted uploaded images are available for this chat.",
+				};
 			},
 		}),
 		generate_email: tool({
@@ -497,6 +535,10 @@ export async function POST(req: Request) {
 			const designLoaded =
 				!hasFrontendDesignSkill ||
 				getLatestToolSuccessState(steps, "read_frontend_design") === true;
+			const uploadedImagesLoaded =
+				!shouldUseUploadedImagesInEmail ||
+				getLatestToolSuccessState(steps, "get_uploaded_images_for_email") ===
+					true;
 			const emailStatus = getLatestToolSuccessState(steps, "generate_email");
 
 			if (!planned) {
@@ -512,6 +554,17 @@ export async function POST(req: Request) {
 					activeTools: ["read_frontend_design"],
 					toolChoice: { type: "tool", toolName: "read_frontend_design" },
 					system: `${systemPrompt}\n\nCurrent step: load the frontend-design skill and use it to decide the email's visual direction.`,
+				};
+			}
+
+			if (!uploadedImagesLoaded) {
+				return {
+					activeTools: ["get_uploaded_images_for_email"],
+					toolChoice: {
+						type: "tool",
+						toolName: "get_uploaded_images_for_email",
+					},
+					system: `${systemPrompt}\n\nCurrent step: fetch the hosted uploaded image URLs for this chat before generating the email. Call get_uploaded_images_for_email with no arguments, then use those URLs in the email template.`,
 				};
 			}
 

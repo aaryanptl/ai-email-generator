@@ -7,7 +7,7 @@ import {
 	type FileUIPart,
 	type UIMessage,
 } from "ai";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
 	Bot,
 	Copy,
@@ -77,6 +77,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const CHAT_MODEL_STORAGE_KEY = "preferred-chat-model";
+const MAX_CONVEX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
 export interface EmailData {
 	name: string;
@@ -296,6 +297,23 @@ const buildSendMessagePayload = ({
 	return messageId ? { text: trimmedText, messageId } : { text: trimmedText };
 };
 
+const isImageFilePart = (file: FileUIPart) =>
+	typeof file.mediaType === "string" && file.mediaType.startsWith("image/");
+
+const shouldUploadImageFile = (file: FileUIPart) =>
+	isImageFilePart(file) &&
+	typeof file.url === "string" &&
+	(file.url.startsWith("data:") || file.url.startsWith("blob:"));
+
+const filePartToBlob = async (file: FileUIPart) => {
+	const response = await fetch(file.url);
+	if (!response.ok) {
+		throw new Error(`Failed to read attachment "${file.filename ?? "image"}".`);
+	}
+
+	return await response.blob();
+};
+
 export function ChatPanel({
 	chatId,
 	initialMessages,
@@ -304,6 +322,7 @@ export function ChatPanel({
 	onStatusChange,
 }: ChatPanelProps) {
 	const processedToolCallsRef = useRef<Set<string>>(new Set());
+	const submitInFlightRef = useRef(false);
 	const [input, setInput] = useState("");
 	const [selectedModel, setSelectedModel] = useState<ChatModelId>(() => {
 		if (typeof window === "undefined") {
@@ -326,6 +345,8 @@ export function ChatPanel({
 		| DailyPromptStatus
 		| undefined;
 	const hasReachedDailyLimit = dailyPromptStatus?.reached ?? false;
+	const generateUploadUrl = useMutation(api.images.generateUploadUrl);
+	const finalizeUpload = useMutation(api.images.finalizeUpload);
 
 	const chatTransport = useMemo(() => {
 		return new DefaultChatTransport({
@@ -355,6 +376,12 @@ export function ChatPanel({
 
 	const isStreaming = status === "streaming" || status === "submitted";
 	const isAssistantStreaming = isStreaming && !hasPendingStop;
+
+	useEffect(() => {
+		if (!isStreaming) {
+			submitInFlightRef.current = false;
+		}
+	}, [isStreaming]);
 
 	useEffect(() => {
 		onStatusChange?.(isAssistantStreaming);
@@ -407,7 +434,75 @@ export function ChatPanel({
 		[editingMessage],
 	);
 
-	const handleSubmit = (message: PromptInputMessage) => {
+	const uploadAttachedImages = useCallback(
+		async (files: FileUIPart[]) => {
+			const preparedFiles = [...files];
+			const uploadTargets = preparedFiles
+				.map((file, index) => ({ file, index }))
+				.filter(({ file }) => shouldUploadImageFile(file));
+
+			if (uploadTargets.length === 0) {
+				return preparedFiles;
+			}
+
+			for (const { file, index } of uploadTargets) {
+				const uploadUrl = await generateUploadUrl({ chatId });
+				const blob = await filePartToBlob(file);
+				if (blob.size > MAX_CONVEX_IMAGE_SIZE_BYTES) {
+					throw new Error(
+						`Image "${file.filename ?? "attachment"}" exceeds the 5 MB upload limit.`,
+					);
+				}
+
+				const uploadResponse = await fetch(uploadUrl, {
+					method: "POST",
+					headers: {
+						"Content-Type":
+							file.mediaType || blob.type || "application/octet-stream",
+					},
+					body: blob,
+				});
+
+				if (!uploadResponse.ok) {
+					throw new Error(
+						`Failed to upload image "${file.filename ?? "attachment"}".`,
+					);
+				}
+
+				const { storageId } = (await uploadResponse.json()) as {
+					storageId?: string;
+				};
+				if (!storageId) {
+					throw new Error(
+						`Convex did not return a storage id for "${file.filename ?? "attachment"}".`,
+					);
+				}
+
+				const uploadedImage = await finalizeUpload({
+					chatId,
+					storageId: storageId as never,
+					fileName: file.filename ?? "image",
+					contentType:
+						file.mediaType || blob.type || "application/octet-stream",
+					sizeBytes: blob.size,
+				});
+
+				preparedFiles[index] = {
+					...file,
+					url: uploadedImage.url,
+				};
+			}
+
+			return preparedFiles;
+		},
+		[chatId, finalizeUpload, generateUploadUrl],
+	);
+
+	const handleSubmit = async (message: PromptInputMessage) => {
+		if (submitInFlightRef.current) {
+			return;
+		}
+
 		const text = message.text.trim();
 		const files =
 			editingMessageFiles.length > 0
@@ -428,15 +523,33 @@ export function ChatPanel({
 			return;
 		}
 
+		submitInFlightRef.current = true;
+
 		if (messages.length === 0) {
 			onEnsureChatPath(chatId);
+		}
+
+		let preparedFiles = files;
+		try {
+			preparedFiles = await uploadAttachedImages(files);
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "Failed to upload one or more attached images.";
+			setChatError(message);
+			toast.error("Image upload failed", {
+				description: message,
+			});
+			submitInFlightRef.current = false;
+			return;
 		}
 
 		setHasPendingStop(false);
 		void sendMessage(
 			buildSendMessagePayload({
 				text: hasText ? text : "Attached files for context",
-				files,
+				files: preparedFiles,
 				messageId: editingMessage?.id,
 			}),
 		);
