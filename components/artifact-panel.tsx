@@ -17,6 +17,12 @@ import {
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
@@ -30,14 +36,24 @@ export interface EmailArtifact {
 	htmlCode: string;
 }
 
+export interface EmailArtifactRevision extends EmailArtifact {
+	id: string;
+	assistantMessageId: string;
+	createdAt: number;
+	updatedAt: number;
+}
+
 type ArtifactTab = "preview" | "code" | "assets";
 
 interface ArtifactPanelProps {
 	chatId: string;
 	email: EmailArtifact | null;
+	emailHistory: EmailArtifactRevision[];
+	selectedRevisionId: string | null;
 	compilationError?: string | null;
 	isStreaming?: boolean;
 	onEnsureChatPath?: (chatId: string) => void;
+	onSelectRevision?: (revisionId: string) => void;
 }
 
 interface UploadedImage {
@@ -308,9 +324,12 @@ function EmailAssetsPanel({
 export function ArtifactPanel({
 	chatId,
 	email,
+	emailHistory,
+	selectedRevisionId,
 	compilationError,
 	isStreaming,
 	onEnsureChatPath,
+	onSelectRevision,
 }: ArtifactPanelProps) {
 	const [activeTab, setActiveTab] = useState<ArtifactTab>("preview");
 	const [activeSourceTab, setActiveSourceTab] = useState<"html" | "tsx">(
@@ -382,6 +401,30 @@ export function ArtifactPanel({
 	const sourceLanguage = activeSourceTab === "html" ? "markup" : "tsx";
 	const sourceCopyLabel =
 		activeSourceTab === "html" ? "Copy HTML" : "Copy React";
+	const currentArtifactRevisions = useMemo(() => {
+		if (!selectedRevisionId) {
+			return [];
+		}
+
+		const selectedRevision = emailHistory.find(
+			(revision) => revision.id === selectedRevisionId,
+		);
+		if (!selectedRevision) {
+			return [];
+		}
+
+		return emailHistory
+			.filter(
+				(revision) =>
+					revision.assistantMessageId === selectedRevision.assistantMessageId,
+			)
+			.sort((a, b) => a.createdAt - b.createdAt);
+	}, [emailHistory, selectedRevisionId]);
+	const selectedRevisionIndex = currentArtifactRevisions.findIndex(
+		(revision) => revision.id === selectedRevisionId,
+	);
+	const selectedRevisionLabel =
+		selectedRevisionIndex >= 0 ? `Version ${selectedRevisionIndex + 1}` : null;
 
 	return (
 		<div className="flex h-full min-h-0 min-w-0 flex-col bg-surface-canvas">
@@ -415,9 +458,42 @@ export function ArtifactPanel({
 						<div className="hidden sm:block w-px h-5 bg-border/40 mx-1 shrink-0" />
 
 						<div className="min-w-0 flex-1 hidden sm:block">
-							<h3 className="truncate text-[12px] font-medium text-muted-foreground opacity-70">
-								{email.name}
-							</h3>
+							{currentArtifactRevisions.length > 0 && onSelectRevision ? (
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											className="h-8 rounded-xl px-3 text-[12px] font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+										>
+											{selectedRevisionLabel ?? "Versions"}
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent
+										align="start"
+										className="w-44 rounded-xl"
+									>
+										{currentArtifactRevisions.map((revision, index) => (
+											<DropdownMenuItem
+												key={revision.id}
+												onSelect={() => onSelectRevision(revision.id)}
+												className={cn(
+													"rounded-lg text-xs font-medium",
+													revision.id === selectedRevisionId &&
+														"bg-muted text-foreground",
+												)}
+											>
+												Version {index + 1}
+											</DropdownMenuItem>
+										))}
+									</DropdownMenuContent>
+								</DropdownMenu>
+							) : (
+								<h3 className="truncate text-[12px] font-medium text-muted-foreground opacity-70">
+									{email.name}
+								</h3>
+							)}
 						</div>
 
 						<div className="flex shrink-0 items-center gap-1.5 ml-auto">
@@ -592,11 +668,14 @@ export function ArtifactPanel({
 										</div>
 									</div>
 									<h3 className="text-center text-xl font-semibold tracking-tight text-foreground">
-										Nothing to preview yet
+										{emailHistory.length > 0
+											? "Preview is closed"
+											: "Nothing to preview yet"}
 									</h3>
 									<p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
-										Chat on the left to generate an email, or open the asset
-										vault to add brand files first.
+										{emailHistory.length > 0
+											? "Select an artifact card above to reopen any saved revision, or switch to Assets to manage uploaded files."
+											: "Chat on the left to generate an email, or open the asset vault to add brand files first."}
 									</p>
 									<Button
 										type="button"

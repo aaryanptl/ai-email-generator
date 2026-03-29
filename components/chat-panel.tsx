@@ -11,6 +11,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
 	Bot,
 	Copy,
+	Mail,
 	MessageSquare,
 	Palette,
 	PlusIcon,
@@ -56,6 +57,7 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { isToolUIPart, ToolTrace } from "@/components/ai-elements/tool-trace";
+import type { EmailArtifactRevision } from "@/components/artifact-panel";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -91,8 +93,11 @@ export interface EmailData {
 interface ChatPanelProps {
 	chatId: string;
 	initialMessages: UIMessage[];
+	emailHistory: EmailArtifactRevision[];
+	selectedRevisionId: string | null;
 	onEmailGenerated: (data: EmailData) => void;
 	onEnsureChatPath: (chatId: string) => void;
+	onSelectRevision: (revisionId: string) => void;
 	onStatusChange?: (isStreaming: boolean) => void;
 }
 
@@ -314,11 +319,51 @@ const filePartToBlob = async (file: FileUIPart) => {
 	return await response.blob();
 };
 
+function MessageArtifactCard({
+	revision,
+	isSelected,
+	onSelect,
+}: {
+	revision: EmailArtifactRevision;
+	isSelected: boolean;
+	onSelect: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onSelect}
+			className={cn(
+				"mt-4 w-full max-w-md rounded-2xl border p-3 text-left shadow-sm transition-all",
+				isSelected
+					? "border-foreground/20 bg-card shadow-md"
+					: "border-border/60 bg-background/70 hover:border-foreground/15 hover:bg-background",
+			)}
+		>
+			<div className="flex items-start gap-3">
+				<div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/30 text-muted-foreground">
+					<Mail className="size-4" />
+				</div>
+				<div className="min-w-0 flex-1">
+					<p className="truncate text-sm font-semibold text-foreground">
+						{revision.name}
+					</p>
+					<span className="mt-1 inline-flex rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+						Artifact
+					</span>
+				</div>
+			</div>
+		</button>
+	);
+}
+
 export function ChatPanel({
 	chatId,
 	initialMessages,
+	emailHistory,
+	selectedRevisionId,
 	onEmailGenerated,
 	onEnsureChatPath,
+	onSelectRevision,
 	onStatusChange,
 }: ChatPanelProps) {
 	const processedToolCallsRef = useRef<Set<string>>(new Set());
@@ -737,6 +782,38 @@ export function ChatPanel({
 								const isLastAssistantMessage = isLiveAssistantMessage;
 								const showMessageActions =
 									message.role === "user" || !isStreaming;
+								const artifactCards =
+									message.role === "assistant"
+										? message.parts.flatMap((part) => {
+												if (!isToolUIPart(part) || !("output" in part)) {
+													return [];
+												}
+
+												const output = part.output as
+													| Partial<EmailData>
+													| undefined;
+												if (
+													!output ||
+													output.success !== true ||
+													typeof output.htmlCode !== "string" ||
+													typeof output.tsxCode !== "string"
+												) {
+													return [];
+												}
+
+												const matchedRevision = emailHistory.find(
+													(revision) =>
+														revision.htmlCode === output.htmlCode &&
+														revision.tsxCode === output.tsxCode,
+												);
+
+												if (!matchedRevision) {
+													return [];
+												}
+
+												return [{ revision: matchedRevision }];
+											})
+										: [];
 
 								return (
 									<Message key={message.id} from={message.role}>
@@ -787,6 +864,14 @@ export function ChatPanel({
 
 												return null;
 											})}
+											{artifactCards.map(({ revision }) => (
+												<MessageArtifactCard
+													key={revision.id}
+													revision={revision}
+													isSelected={selectedRevisionId === revision.id}
+													onSelect={() => onSelectRevision(revision.id)}
+												/>
+											))}
 										</MessageContent>
 
 										{isAssistantStreaming && isLiveAssistantMessage ? (

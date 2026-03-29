@@ -120,24 +120,6 @@ export const createLinked = mutation({
 		const ownerUserId = await getOrCreateCurrentUserId(ctx);
 		const now = Date.now();
 
-		const existing = await ctx.db
-			.query("emails")
-			.withIndex("by_assistant_message", (q) =>
-				q.eq("assistantMessageId", args.assistantMessageId),
-			)
-			.first();
-
-		if (existing && existing.ownerUserId === ownerUserId) {
-			await ctx.db.patch(existing._id, {
-				name: args.name,
-				description: args.description,
-				tsxCode: args.tsxCode,
-				htmlCode: args.htmlCode,
-				updatedAt: now,
-			});
-			return existing._id;
-		}
-
 		return await ctx.db.insert("emails", {
 			ownerUserId,
 			chatId: args.chatId,
@@ -149,6 +131,37 @@ export const createLinked = mutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+	},
+});
+
+export const listByChatId = query({
+	args: {
+		chatId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const ownerUserId = await findCurrentUserId(ctx);
+		if (!ownerUserId) {
+			return [];
+		}
+
+		const emails = await ctx.db
+			.query("emails")
+			.withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+			.collect();
+
+		return emails
+			.filter((email) => email.ownerUserId === ownerUserId)
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+			.map((email) => ({
+				id: email._id,
+				assistantMessageId: email.assistantMessageId,
+				name: email.name,
+				description: email.description,
+				tsxCode: email.tsxCode,
+				htmlCode: email.htmlCode,
+				createdAt: email.createdAt,
+				updatedAt: email.updatedAt,
+			}));
 	},
 });
 
